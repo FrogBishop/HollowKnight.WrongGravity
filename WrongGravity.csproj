@@ -8,11 +8,6 @@
         <Version>1.0.0.0</Version>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="MonoMod" Version="21.4.29.1">
-            <IncludeAssets>all</IncludeAssets>
-        </PackageReference>
-    </ItemGroup>
-    <ItemGroup>
         <Reference Include="Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
             <HintPath>References\Assembly-CSharp.dll</HintPath>
         </Reference>
