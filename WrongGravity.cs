@@ -11,6 +11,7 @@ namespace WrongGravity
 	public class WrongGravity:Mod
 	{
 		private bool flipped=false;
+		private TransitionPoint EG=null;
 		public override string GetVersion()=>VersionUtil.GetVersion<WrongGravity>();
 		public override void Initialize()
 		{
@@ -33,7 +34,6 @@ namespace WrongGravity
 			On.HeroController.RecoilLeftLong+=RecoilLeftLong;
 			On.HeroController.RecoilDown+=RecoilDown;
 			On.HeroController.CanDreamNail+=CanDreamNail;
-//			On.HeroController.CanInteract+=CanInteract;
 			On.HeroController.AffectedByGravity+=AffectedByGravity;
 			On.HeroController.FallCheck+=FallCheck;
 			On.HeroController.JumpReleased+=JumpReleased;
@@ -44,8 +44,8 @@ namespace WrongGravity
 			On.HeroController.CheckTouching+=CheckTouching;
 			On.HeroController.CheckTouchingAdvanced+=CheckTouchingAdvanced;
 			On.HeroController.FindCollisionDirection+=FindCollisionDirection;
-			On.HeroController.OnCollisionEnter2D+=OnCollisionEnter2D;
-			On.HeroController.SetupGameRefs+=SetupGameRefs;
+//			On.HeroController.OnCollisionEnter2D+=OnCollisionEnter2D;
+//			On.HeroController.SetupGameRefs+=SetupGameRefs;
 			On.HeroController.FindGroundPoint+=FindGroundPoint;
 			On.HeroController.FindGroundPointY+=FindGroundPointY;
 			On.TransitionPoint.GetGatePosition+=GetGatePosition;
@@ -85,6 +85,8 @@ namespace WrongGravity
 			Vector3 localScale=self.transform.localScale;
 			localScale.y*=-1;
 			self.transform.localScale=localScale;
+			if(self.SPEED_TO_ENTER_SCENE_DOWN<0)
+				self.SPEED_TO_ENTER_SCENE_DOWN*=-1;
 		}
 		private void Update(On.HeroController.orig_Update orig,HeroController self)
 		{
@@ -282,10 +284,6 @@ namespace WrongGravity
 				Flip(self);
 			return r;
 		}
-		private bool CanInteract(On.HeroController.orig_CanInteract orig,HeroController self)
-		{
-			return self.CanInput() && self.hero_state != ActorStates.no_input && !GameManager.instance.isPaused && !self.cState.dashing && !self.cState.backDashing && !self.cState.attacking && !self.controlReqlinquished && !self.cState.hazardDeath && !self.cState.hazardRespawning && !self.cState.recoilFrozen && !self.cState.recoiling && !self.cState.transitioning && self.CheckNearRoof();
-		}
 		private void AffectedByGravity(On.HeroController.orig_AffectedByGravity orig,HeroController self,bool gravityApplies)
 		{
 			if(Mirror.GetField<HeroController,Rigidbody2D>(self,"rb2d").gravityScale<0)
@@ -293,6 +291,21 @@ namespace WrongGravity
 			orig(self,gravityApplies);
 			if(Mirror.GetField<HeroController,Rigidbody2D>(self,"rb2d").gravityScale>0)
 				Mirror.GetFieldRef<HeroController,Rigidbody2D>(self,"rb2d").gravityScale*=-1;
+			if(gravityApplies==true&&EG!=null)
+			{
+				GatePosition p=EG.GetGatePosition();
+				if(p==GatePosition.top)
+				{
+					EG.entryOffset.y-=6;
+					EG.entryOffset.y-=6;
+				}
+				else if(p==GatePosition.bottom)
+				{
+					EG.entryOffset.y+=6;
+					EG.entryOffset.y+=6;
+				}
+				EG=null;
+			}
 		}
 		private void FallCheck(On.HeroController.orig_FallCheck orig,HeroController self)
 		{
@@ -592,50 +605,28 @@ namespace WrongGravity
 		private Vector3 FindGroundPoint(On.HeroController.orig_FindGroundPoint orig,HeroController self,Vector2 startPoint,bool useExtended=false)
 		{
 			Collider2D col2d=Mirror.GetField<HeroController,Collider2D>(self,"col2d");
-			float num = Mirror.GetField<HeroController,float>(self,"FIND_GROUND_POINT_DISTANCE");
-			if (useExtended)
-			{
-				num = Mirror.GetField<HeroController,float>(self,"FIND_GROUND_POINT_DISTANCE_EXT");
-			}
-			RaycastHit2D raycastHit2D = Physics2D.Raycast(startPoint, Vector2.down, num, 256);
-			if (raycastHit2D.collider == null)
-			{
-				Debug.LogErrorFormat("FindGroundPoint: Could not find ground point below {0}, check reference position is not too high (more than {1} tiles).", new object[]
-				{
-					startPoint.ToString(),
-					num
-				});
-			}
-			return new Vector3(raycastHit2D.point.x, raycastHit2D.point.y - col2d.bounds.extents.y - col2d.offset.y - 0.01f, self.transform.position.z);
+			return orig(self,startPoint,useExtended)-new Vector3(0,-2*col2d.offset.y,0);
 		}
 		private float FindGroundPointY(On.HeroController.orig_FindGroundPointY orig,HeroController self,float x,float y,bool useExtended=false)
 		{
 			Collider2D col2d=Mirror.GetField<HeroController,Collider2D>(self,"col2d");
-			float num = Mirror.GetField<HeroController,float>(self,"FIND_GROUND_POINT_DISTANCE");
-			if (useExtended)
-			{
-				num = Mirror.GetField<HeroController,float>(self,"FIND_GROUND_POINT_DISTANCE_EXT");
-			}
-			RaycastHit2D raycastHit2D = Physics2D.Raycast(new Vector2(x, y), Vector2.down, num, 256);
-			if (raycastHit2D.collider == null)
-			{
-				Debug.LogErrorFormat("FindGroundPoint: Could not find ground point below ({0},{1}), check reference position is not too high (more than {2} tiles).", new object[]
-				{
-					x,
-					y,
-					num
-				});
-			}
-			return raycastHit2D.point.y - col2d.bounds.extents.y - col2d.offset.y - 0.01f;
+			return orig(self,x,y,useExtended)+2*col2d.offset.y;
 		}
 		private GatePosition GetGatePosition(On.TransitionPoint.orig_GetGatePosition orig,TransitionPoint self)
 		{
 			GatePosition g=orig(self);
-/*			if(g==GatePosition.top)
+			if(g==GatePosition.top)
+			{
 				g=GatePosition.bottom;
+				self.entryOffset.y-=6;
+			}
 			else if(g==GatePosition.bottom)
+			{
 				g=GatePosition.top;
-*/			return g;
+				self.entryOffset.y+=6;
+			}
+			EG=self;
+			return g;
 		}
 	}
 }
