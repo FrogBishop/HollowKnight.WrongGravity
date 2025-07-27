@@ -12,6 +12,7 @@ namespace WrongGravity
 	{
 		private bool flipped=false;
 		private TransitionPoint EG=null;
+		private float EGoffset;
 		public override string GetVersion()=>VersionUtil.GetVersion<WrongGravity>();
 		public override void Initialize()
 		{
@@ -111,7 +112,7 @@ namespace WrongGravity
 			orig(self);
 			if(f)
 				Flip(self);
-			if(!self.playerData.atBench&&Mirror.GetField<HeroController,Rigidbody2D>(self,"rb2d").gravityScale>0)
+			if(Mirror.GetField<HeroController,Rigidbody2D>(self,"rb2d").gravityScale>0)
 				Mirror.GetFieldRef<HeroController,Rigidbody2D>(self,"rb2d").gravityScale*=-1;
 		}
 		private void Move(On.HeroController.orig_Move orig,HeroController self,float move_direction)
@@ -294,16 +295,8 @@ namespace WrongGravity
 			if(gravityApplies==true&&EG!=null)
 			{
 				GatePosition p=EG.GetGatePosition();
-				if(p==GatePosition.top)
-				{
-					EG.entryOffset.y-=6;
-					EG.entryOffset.y-=6;
-				}
-				else if(p==GatePosition.bottom)
-				{
-					EG.entryOffset.y+=6;
-					EG.entryOffset.y+=6;
-				}
+				if(p==GatePosition.top||p==GatePosition.bottom)
+					EG.entryOffset.y=EGoffset;
 				EG=null;
 			}
 		}
@@ -605,7 +598,7 @@ namespace WrongGravity
 		private Vector3 FindGroundPoint(On.HeroController.orig_FindGroundPoint orig,HeroController self,Vector2 startPoint,bool useExtended=false)
 		{
 			Collider2D col2d=Mirror.GetField<HeroController,Collider2D>(self,"col2d");
-			return orig(self,startPoint,useExtended)-new Vector3(0,-2*col2d.offset.y,0);
+			return orig(self,startPoint,useExtended)+new Vector3(0,2*col2d.offset.y,0);
 		}
 		private float FindGroundPointY(On.HeroController.orig_FindGroundPointY orig,HeroController self,float x,float y,bool useExtended=false)
 		{
@@ -615,17 +608,21 @@ namespace WrongGravity
 		private GatePosition GetGatePosition(On.TransitionPoint.orig_GetGatePosition orig,TransitionPoint self)
 		{
 			GatePosition g=orig(self);
+			if(EG==null)
+			{
+				EG=self;
+				EGoffset=self.entryOffset.y;
+			}
 			if(g==GatePosition.top)
 			{
 				g=GatePosition.bottom;
-				self.entryOffset.y-=6;
+				self.entryOffset.y=-6f;
 			}
 			else if(g==GatePosition.bottom)
 			{
 				g=GatePosition.top;
-				self.entryOffset.y+=6;
+				self.entryOffset.y=-1.5f;
 			}
-			EG=self;
 			return g;
 		}
 	}
