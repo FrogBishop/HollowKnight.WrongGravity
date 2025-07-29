@@ -1,7 +1,7 @@
 # HollowKnight.WrongGravity
 Hallownest? Hɐlloʍuǝsʇ!
 
-Many thanks to [Mirrored Hallownest](/Mimijackz-HKModding/MirroredHallownest) for the camera, and [niaPfohtaP](/mystelin/HollowKnight.niaPfohtaP) for the awesome idea.
+Many thanks to [Mirrored Hallownest](https://github.com/Mimijackz-HKModding/MirroredHallownest) for the camera, and [niaPfohtaP](https://github.com/mystelin/HollowKnight.niaPfohtaP) for the awesome idea.
 
 Known issues:
 1. Cannot interact(cause there's no ground)
