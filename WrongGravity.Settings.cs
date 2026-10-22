@@ -34,6 +34,12 @@ namespace WrongGravity
         public bool MirrorFsmVelocity = true;
 
         /// <summary>
+        /// Swap up/down enemy knockback so an upward nail hit visibly knocks the enemy
+        /// upward on the mirrored screen instead of downward in world space.
+        /// </summary>
+        public bool MirrorEnemyRecoil = true;
+
+        /// <summary>
         /// Move layer-19 interaction triggers onto the found ground/ceiling. A few
         /// unusual triggers can be overridden by Data/WrongGravityData.json.
         /// </summary>
@@ -141,6 +147,13 @@ namespace WrongGravity
                     "Mirror SetVelocity2d, GetVelocity2d and SetGravity2dScale for the Knight.",
                     delegate(int i) { Config.MirrorFsmVelocity = i == 1; },
                     delegate { return Config.MirrorFsmVelocity ? 1 : 0; }),
+
+                new IMenuMod.MenuEntry(
+                    "Enemy Recoil",
+                    new string[] { "Off", "On" },
+                    "Swap up/down enemy knockback so it matches the mirrored camera.",
+                    delegate(int i) { Config.MirrorEnemyRecoil = i == 1; },
+                    delegate { return Config.MirrorEnemyRecoil ? 1 : 0; }),
 
                 new IMenuMod.MenuEntry(
                     "Fix Interactions",

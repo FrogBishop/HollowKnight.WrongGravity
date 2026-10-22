@@ -106,6 +106,9 @@ namespace WrongGravity
             On.HutongGames.PlayMaker.Actions.GetVelocity2d.DoGetVelocity += GetVelocity2dHook;
             On.HutongGames.PlayMaker.Actions.SetGravity2dScale.DoSetGravityScale += SetGravity2dScaleHook;
 
+            // Enemy knockback: Recoil centralises HealthManager/BeginRecoil/dream-nail hits.
+            On.Recoil.RecoilByDirection += RecoilByDirectionHook;
+
             Log("Hooks installed; gravity inversion active.");
         }
 

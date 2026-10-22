@@ -1,6 +1,6 @@
 # WrongGravity 开发记录
 
-版本：1.0.0.3  
+版本：1.0.0.5  
 目标游戏：Hollow Knight 1.5.78.11833  
 目标框架：.NET Framework 4.7.2  
 当前构建：0 warnings / 0 errors（Debug 与 Release 均已验证）
@@ -71,10 +71,11 @@ Hero 入口都有 `try/finally`；如果以后新增入口，必须遵守同样�
 HollowKnight.WrongGravity/
   WrongGravity.cs                 入口、Hook 注册、相机、Hero wrapper、碰撞/地面重写
   WrongGravity.Ground.cs          GroundProbe + FindGroundPoint/Y 的向上优先/向下回退
-  WrongGravity.Interactions.cs     layer 19 交互触发器修正 + JSON profile
+  WrongGravity.Interactions.cs     交互/门型 transition 触发器修正 + JSON profile
   WrongGravity.Mirror.cs          MirrorContext / MirrorEntity
   WrongGravity.FsmMirror.cs       CheckCollisionSide / CheckCollisionSideEnter / RayCast2d
   WrongGravity.FsmVelocity.cs     SetVelocity2d / GetVelocity2d / SetGravity2dScale
+  WrongGravity.EnemyRecoil.cs     敌人垂直击退方向交换（RecoilByDirection）
   WrongGravity.Diagnostics.cs     门、顶部 kill plane、Crystal Dash FSM 补丁
   WrongGravity.Settings.cs        配置 + IMenuMod
   WrongGravity.Data.cs            DoorProfile / InteractionProfile / MirrorData / MiniJson
@@ -150,17 +151,25 @@ HollowKnight.WrongGravity/
 
 ### 3.3 `WrongGravity.Interactions.cs`
 
-- 在场景加载后延迟一帧扫描 `Collider2D`。
-- 只处理：
-  - `gameObject.layer == 19`（Hollow Knight 1.5.78 的交互触发器层）；
-  - `isTrigger == true`；
-  - `BoxCollider2D`。
+- 在场景加载后延迟一帧扫描交互目标。
+- **不再按 layer 19 过滤**。`INTERACTIVE_OBJECT = 19` 只是“交互对象”层，
+  里面既有 NPC 本体、可调查物，也有非触发碰撞；上一版按层扫描会动错判定框。
+- 目标识别改为：
+  - `RestBench` 组件（长椅）；
+  - `TransitionPoint` 且 `isADoor == true`（或名字含 `door`）的门型 transition；
+  - `PlayMakerFSM` 的 `CallMethod` / `CallMethodProper` 调用
+    `HeroController.CanTalk` / `CanInspect` / `CanInteract` 的对象
+    （NPC 对话、可调查物、商店等）。
+  - 跳过 Hero 自己的 FSM。
+- 每个目标取自身及**直接子对象**上的 `isTrigger == true` 的 `BoxCollider2D`；
+  跳过带 `DamageHero` 的危险触发器。
 - 对每个触发器：
-  1. 从触发器顶部向上找地面（长距离），失败则向下找；
+  1. 从触发器中心向上找地面（长距离），失败则向下找；
   2. 计算将触发器中心放到地面点所需的 `offset.y`；
   3. 修改 `BoxCollider2D.offset`，而不是移动 NPC 本体；
   4. 如果 JSON profile 指定 `applySize`，修改 `size.y`。
-- 使用 `HashSet<int>` 记录已处理实例，避免同一场景重复叠加 offset。
+- 使用 `HashSet<int>` 记录已处理实例，并给 collider GameObject 加
+  `InteractionAdjustedMarker`；即使持久化对象跨场景保留，也不会重复叠加 offset。
 - 场景名变化时清空缓存。
 - JSON 的 `path` 支持精确匹配或后缀匹配。
 
@@ -204,6 +213,22 @@ HollowKnight.WrongGravity/
   - 0 保持 0。
 - `DownSpellMode == 0` 时，FSM 名含 `Spell` 的不做速度/重力镜像。
 - 所有 hook 都检查 `Config.Enabled` 和 `MirrorContext.IsActive`。
+
+### 3.6.1 `WrongGravity.EnemyRecoil.cs`
+
+- Hook `Recoil.RecoilByDirection(int direction, float magnitude)`。
+- `DirectionUtils` 的方向编号：0=右，1=上，2=左，3=下。
+- 对非 Hero 的 `Recoil` 组件，把 1 和 3 交换；0/2 不变。
+- 覆盖路径：
+  - `HealthManager.TakeDamage` 的击退；
+  - `EnemyDreamnailReaction.RecieveDreamImpact`；
+  - PlayMaker `BeginRecoil`；
+  - `Recoil.RecoilByDamage`。
+- 为什么只交换垂直：水平击退在镜像相机下左右不变；世界 +Y 在屏幕上是向下，
+  所以世界向上的击退看起来是向下。
+- 设置项：`Enemy Recoil`。
+- 注意：这只修正**击退方向**；受击特效的旋转、`directionOfLastAttack`、
+  部分敌人 FSM 的动画仍可能使用未镜像的世界方向。
 
 ### 3.7 `WrongGravity.Diagnostics.cs`
 
@@ -303,12 +328,12 @@ HollowKnight.WrongGravity/
 
 - 只使用 forceControlAfter。
 - 没有 applyEntryOffset，所以走 fallback 的 -6/-1.5。
-- interaction 为空，交互修正器对层 19 使用自动地面放置。
+- interaction 为空，交互修正器按组件/FSM 识别目标后自动地面放置。
 - entryVelocity / applyEntryVelocity 目前只是解析，未应用。
 
 ### 3.11 `WrongGravity.csproj`
 
-- `net472`、`Version 1.0.0.3`。
+- `net472`、`Version 1.0.0.5`。
 - 引用游戏 DLL、MMHOOK、UnityEngine、Vasi、PlayMaker。
 - 把 JSON 嵌入为 `WrongGravity.Data.WrongGravityData.json`。
 - Release 目标：
@@ -449,11 +474,21 @@ DoorProfile 覆盖。代码注释里也明确写了这是权宜之计。
 
 ### 7.1 自动模式
 
-- 扫描 layer 19、trigger、BoxCollider2D。
-- 先向上找地面，失败再向下。
-- 把 collider 的 `offset.y` 调到地面点，保持 X 不变。
-- 不移动 NPC 本体，只移动触发器。
-- 每个实例只处理一次。
+目标不是按 layer 找的，而是按行为/组件找：
+
+- `RestBench`：长椅；
+- `TransitionPoint.isADoor` 或名字含 `door`：门型 transition；
+- 调用 `HeroController.CanTalk` / `CanInspect` / `CanInteract` 的
+  PlayMaker FSM：NPC 对话、调查物、商店等。
+
+对每个目标：
+
+- 取自身和**直接子对象**上的 `BoxCollider2D`；
+- 只处理 `isTrigger == true`，且没有 `DamageHero` 的；
+- 先向上找地面，失败再向下；
+- 把 collider 的 `offset.y` 调到地面点，保持 X 不变；
+- 不移动 NPC 本体，只移动触发器；
+- 每个实例只处理一次；持久化对象用 `InteractionAdjustedMarker` 标记，跨场景不会重复叠加。
 
 ### 7.2 JSON 覆盖
 
@@ -469,13 +504,19 @@ DoorProfile 覆盖。代码注释里也明确写了这是权宜之计。
 ```
 
 - `path` 可以是完整路径，也可以是后缀。
+- profile 不只用于覆盖位置，也会作为**发现目标**：即使组件/FSM 启发式识别
+  不到，也可以按 path 直接找到对象。
 - `offsetY` 是相对地面点的偏移。
 - `sizeY` 会替换 BoxCollider2D 的高度。
 - 如果自动放置不对，优先加 profile，而不是改代码。
 
 ### 7.3 已知风险
 
-- 层 19 可能包含非交互触发器；当前会全部尝试调整。
+- FSM 识别依赖 `CallMethod` / `CallMethodProper` 的方法名；如果某个 NPC 用
+  自定义 action 或把方法名放在变量里，可能识别不到，需要在 JSON 里补 profile
+  或后续扩展识别规则。
+- 门型 transition 的触发器移动后，`TransitionPoint.OnTriggerEnter2D` 的触发位置
+  会改变；需要实测门型 transition 是否仍能正常进入。
 - 如果某个触发器没有 ceiling/floor，修正器会跳过并记录
   `[Interaction]` 警告。
 - 对非 BoxCollider2D 暂不处理。
@@ -595,7 +636,7 @@ Release 目标会：
 4. 删除 `Output/`；
 5. 打印 SHA256。
 
-当前版本：`1.0.0.3`。
+当前版本：`1.0.0.5`。
 
 Release 构建结果：
 
@@ -603,7 +644,7 @@ Release 构建结果：
 0 warnings
 0 errors
 WrongGravity.zip
-SHA256 B4FBE066D364CCEE11E50D6F895C924818AD0B096E92BC9AA16A594BC18F70E1
+SHA256 6D4EF09016647731C70926A8802DE9560D5D20F87D1193A83A51A4970F0B8AA1
 ```
 
 当前 zip 内容：
@@ -624,6 +665,8 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 
 - [ ] 普通跳跃 / 二段跳 / 冲刺 / 超级冲刺
 - [ ] 受击 Recoil / 下砸 Recoil
+- [ ] 骨钉向上/向下击中敌人：敌人应向屏幕外侧击退
+- [ ] 敌人受击特效方向（可能仍不镜像）
 - [ ] 梦钉 / 梦门
 - [ ] 法术（尤其下砸）
 - [ ] 长椅 / NPC / 石碑 / 商店交互
@@ -643,7 +686,9 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 
 - [ ] 自动放置的 bench / NPC
 - [ ] JSON profile 覆盖的异常交互点
-- [ ] layer 19 非交互触发器不被误改（如果发现，记录 path 并加 profile 跳过）
+- [ ] 长椅、NPC 对话、调查物、商店的触发器被移动到正确一侧
+- [ ] 门型 transition（isADoor）仍能正常触发
+- [ ] 非交互的 layer 19 对象不再被错误移动
 
 ### 13.4 门
 
@@ -659,11 +704,11 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 
 - 只支持 HK 1.5.78.11833。
 - 水面、酸液、粒子、上吼/下砸对象没有完整镜像。
-- 敌人受击方向和部分 Quake 效果仍是原版方向。
+- 敌人垂直击退已交换；但受击特效旋转、部分 Quake/boss FSM 动画仍可能使用原版方向。
 - RayCast2d 只覆盖 Superdash + active superDashing。
 - GetVelocity2d 只覆盖 Space.World。
 - FindGroundPoint 在上下都找不到时才回退到原版；没有天花板/地板的房间仍可能报原版错误。
-- 交互修正基于 layer 19 启发式；异常对象需要 JSON 覆盖。
+- 交互修正基于组件/FSM 行为识别；无法识别的自定义交互对象需要 JSON 覆盖或扩展规则。
 - 门 entryOffset 默认规则基于 gate 名字，异常门需要 DoorProfile。
 - Bounds Cage 的 top collider 必须在同一个 GameObject 上。
 - 不是所有可能的 HeroController 入口都经过 mirror wrapper；新增入口必须
@@ -671,7 +716,7 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 
 ---
 
-## 15. 从 1.0.0.2 到 1.0.0.3 的改动
+## 15. 从 1.0.0.2 到 1.0.0.5 的改动
 
 - 重构所有源文件，补充 XML 文档和行内注释。
 - `FindGroundPoint` / `FindGroundPointY` 改为“向上优先，修正后的向下回退，最后才用原版”。
@@ -682,10 +727,11 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 - `MirrorContext.Reset()` 保留，但文档明确它不恢复 velocity。
 - 顶部 kill plane 支持多个 Bounds Cage，并缓存/禁用。
 - Cdash 补丁增加前置校验，避免半改 FSM。
-- 新增 layer 19 交互触发器自动修正 + JSON profile。
+- 新增交互/门型 transition 触发器自动修正 + JSON profile；不再使用 layer 19 过滤。
+- 新增敌人垂直击退镜像（RecoilByDirection 交换 up/down）。
 - 新增 `FixInteractions`、`LogInteractions`、`Debug Draw`、`Verbose Log`。
 - 移除 Unity `Debug.Log` / `Debug.LogError`，保留可选的 DrawLine/DrawRay。
-- csproj 修正 README 复制路径（ProjectDir），版本号 1.0.0.3。
+- csproj 修正 README 复制路径（ProjectDir），版本号 1.0.0.5。
 - CI 改为 Windows + `gh release create`，避免已废弃的 release action。
 - README/DEVELOPMENT 重写，修正旧文档中与代码不一致的描述。
 

@@ -4,6 +4,8 @@ A Hollow Knight 1.5.78.11833 mod that turns the Knight's gravity upside down whi
 keeping the screen readable: the Knight falls upward in world space, the camera
 projection is mirrored, and the level appears upside down on screen.
 
+Version 1.0.0.5.
+
 This repository is a source mod, not a standalone game. Build it against the game's
 assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
 
@@ -18,11 +20,13 @@ assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
 - Mirrors the tk2d camera projection with `Matrix4x4.Scale(1, -1, 1)`.
 - Reimplements the HeroController ray/ground checks that hard-code `Vector2.down`.
 - Mirrors the PlayMaker collision, velocity and gravity actions used by hero FSMs.
+- Swaps up/down enemy knockback so a nail hit still knocks the enemy away on screen.
 - Patches the Crystal Dash (Superdash) FSM so holding the button no longer auto-dashes.
 - Enables the top `Bounds Cage` kill collider so falling upward out of a room respawns
   the Knight like falling downward does in vanilla.
-- Moves layer-19 interaction triggers onto the found floor/ceiling. Unusual triggers can
-  be overridden in `Data/WrongGravityData.json`.
+- Moves interaction triggers (benches, door-type transitions, and NPC/inspectable
+  PlayMaker triggers) onto the found floor/ceiling. Unusual triggers can be overridden
+  in `Data/WrongGravityData.json`.
 
 ## Requirements
 
@@ -62,7 +66,8 @@ Settings are exposed through the Modding API menu and saved as
 | Top Kill Plane | On | Enable every active `Bounds Cage` top kill collider. |
 | Mirror FSM Collision | On | Mirror `CheckCollisionSide` / `RayCast2d` for hero FSMs. |
 | Mirror FSM Velocity | On | Mirror `SetVelocity2d`, `GetVelocity2d`, `SetGravity2dScale`. |
-| Fix Interactions | On | Move layer-19 interaction triggers to the found floor/ceiling. |
+| Enemy Recoil | On | Swap up/down enemy knockback so it matches the mirrored camera. |
+| Fix Interactions | On | Move detected NPC/bench/door-type interaction triggers to the found floor/ceiling. |
 | Interaction Log | Off | Log every trigger adjusted by the fixer. |
 | Debug Draw | Off | Draw collision/ground probe rays. Noisy. |
 | Verbose Log | Off | Extra `[Ground]`, `[Bump]`, `[Cdash]` details. |
@@ -115,7 +120,9 @@ mid-scene. Change it and restart the game.
 
 - `scene`: scene name.
 - `path`: transform path. Matched exactly or as a suffix, so
-  `Sly/Interaction` also matches `_SceneManager/Sly/Interaction`.
+  `Sly/Interaction` also matches `_SceneManager/Sly/Interaction`. Profiles are also
+  used as a discovery fallback: a target that the component/FSM scan cannot recognise
+  can still be named directly here.
 - `offsetY`: Y offset from the ground point found by the fixer.
 - `sizeY`: optional replacement height for a `BoxCollider2D`.
 - `applyOffset` / `applySize`: enable the two fields above.
@@ -145,7 +152,7 @@ All messages go to the Modding API log:
 - `[Cdash]`: Superdash state and hold/release logic.
 - `[Ground]`: upward/fallback ground searches (Verbose Log).
 - `[Bump]`: bump height details (Verbose Log).
-- `[Interaction]`: layer-19 trigger adjustments.
+- `[Interaction]`: interaction/door trigger adjustments.
 
 Useful sequence for a stuck door:
 
@@ -161,10 +168,12 @@ gates. The destination fields come from `SceneLoadInfo` and are reliable.
 
 ## Known issues / limitations
 
-- Interaction triggers are adjusted heuristically. Some NPCs/benches may still need a
-  JSON interaction profile.
+- Interaction triggers are detected by component/FSM behavior, not by a physics
+  layer. Some custom NPCs, shops or door setups may still need a JSON interaction
+  profile.
 - Water/acid surfaces are not mirrored yet.
-- Enemy recoil and some Quake/spell effects still use unmirrored directions.
+- Enemy vertical knockback is mirrored by swapping Recoil up/down. Hit-effect
+  rotations and some Quake/spell effects may still use unmirrored directions.
 - Up-slash/down-slash object orientation and some particle effects are not mirrored.
 - `FindGroundPoint` uses an upward-first/vanilla-fallback search; a room with neither a
   ceiling nor a floor can still produce the vanilla error.
