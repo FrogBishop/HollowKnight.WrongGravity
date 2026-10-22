@@ -19,12 +19,19 @@ namespace WrongGravity
     /// downward search, and only then the original vanilla implementation. This is
     /// intentional: some rooms are open upwards and would otherwise produce
     /// "no ground found" errors.
+    ///
+    /// Scene entry is the exception. While <see cref="HeroController.EnterScene"/> is
+    /// placing the Knight at a door, both hooks use the vanilla downward search (with
+    /// the same collider-offset correction as the rest of the mod) instead of the
+    /// mirrored upward search. Some doorways sit directly under a low ceiling; the
+    /// mirrored search would put the Knight's head against it and block the transition.
     /// </summary>
     public partial class WrongGravity
     {
         /// <summary>
         /// Hook for <see cref="HeroController.FindGroundPoint(Vector2, bool)"/>.
-        /// Tries upward first, then a corrected downward search, then the original method.
+        /// During scene entry it uses the vanilla downward search; otherwise it tries
+        /// upward first, then a corrected downward search, then the original method.
         /// </summary>
         private Vector3 FindGroundPoint(
             On.HeroController.orig_FindGroundPoint orig,
@@ -32,7 +39,33 @@ namespace WrongGravity
             Vector2 startPoint,
             bool useExtended = false)
         {
-            if (Config.Enabled && GroundProbe.TryFindUp(self, startPoint, useExtended, out Vector3 point))
+            if (!Config.Enabled)
+                return orig(self, startPoint, useExtended);
+
+            // Scene entry deliberately uses the vanilla downward floor search. EnterScene
+            // positions the Knight at the entry gate and expects the original method to put
+            // him on the floor below it. During a door transition the mirrored upward search
+            // can pick a ceiling immediately above the gate and wedge the Knight's head into
+            // it, which blocks the transition. Search direction and distance are vanilla;
+            // GroundProbe.TryFindDown only corrects the returned position for
+            // localScale.y = -1 (the vanilla formula assumes a positive scale). Normal
+            // in-room ground searches (bench/hazard respawn) still use the mirrored policy
+            // below.
+            if (enteringScene)
+            {
+                if (GroundProbe.TryFindDown(self, startPoint, useExtended, out Vector3 entryPoint))
+                {
+                    if (Config.VerboseLog)
+                        Log("[Ground] FindGroundPoint down (scene entry) start=" + startPoint +
+                            " result=" + entryPoint);
+                    return entryPoint;
+                }
+
+                // No floor in range: let the vanilla method log its usual error.
+                return orig(self, startPoint, useExtended);
+            }
+
+            if (GroundProbe.TryFindUp(self, startPoint, useExtended, out Vector3 point))
             {
                 if (Config.VerboseLog)
                     Log("[Ground] FindGroundPoint up start=" + startPoint + " result=" + point);
@@ -56,7 +89,8 @@ namespace WrongGravity
 
         /// <summary>
         /// Hook for <see cref="HeroController.FindGroundPointY(float, float, bool)"/>.
-        /// Same upward-first, corrected-downward, then-vanilla policy as <see cref="FindGroundPoint"/>.
+        /// Same scene-entry exception and upward-first, corrected-downward, then-vanilla
+        /// policy as <see cref="FindGroundPoint"/>.
         /// </summary>
         private float FindGroundPointY(
             On.HeroController.orig_FindGroundPointY orig,
@@ -65,7 +99,27 @@ namespace WrongGravity
             float y,
             bool useExtended = false)
         {
-            if (Config.Enabled && GroundProbe.TryFindUp(self, new Vector2(x, y), useExtended, out Vector3 point))
+            if (!Config.Enabled)
+                return orig(self, x, y, useExtended);
+
+            // Same scene-entry exception as FindGroundPoint: left/right gate entries must
+            // use the vanilla downward search so a low ceiling above the doorway cannot
+            // pin the Knight at the gate. TryFindDown keeps the collider-offset correction
+            // required by localScale.y = -1.
+            if (enteringScene)
+            {
+                if (GroundProbe.TryFindDown(self, new Vector2(x, y), useExtended, out Vector3 entryPoint))
+                {
+                    if (Config.VerboseLog)
+                        Log("[Ground] FindGroundPointY down (scene entry) x=" + x + " y=" + y +
+                            " resultY=" + entryPoint.y);
+                    return entryPoint.y;
+                }
+
+                return orig(self, x, y, useExtended);
+            }
+
+            if (GroundProbe.TryFindUp(self, new Vector2(x, y), useExtended, out Vector3 point))
             {
                 if (Config.VerboseLog)
                     Log("[Ground] FindGroundPointY up x=" + x + " y=" + y + " resultY=" + point.y);

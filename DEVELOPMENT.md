@@ -1,6 +1,6 @@
 # WrongGravity 开发记录
 
-版本：1.0.0.7  
+版本：1.0.0.8  
 目标游戏：Hollow Knight 1.5.78.11833  
 目标框架：.NET Framework 4.7.2  
 当前构建：0 warnings / 0 errors（Debug 与 Release 均已验证）
@@ -70,7 +70,7 @@ Hero 入口都有 `try/finally`；如果以后新增入口，必须遵守同样�
 ```text
 HollowKnight.WrongGravity/
   WrongGravity.cs                 入口、Hook 注册、相机、Hero wrapper、碰撞/地面重写
-  WrongGravity.Ground.cs          GroundProbe + FindGroundPoint/Y 的向上优先/向下回退
+  WrongGravity.Ground.cs          GroundProbe + FindGroundPoint/Y（入口走向下搜索，其余向上优先/向下回退）
   WrongGravity.Interactions.cs     交互/门型 transition 触发器修正 + JSON profile
   WrongGravity.Mirror.cs          MirrorContext / MirrorEntity
   WrongGravity.FsmMirror.cs       CheckCollisionSide / CheckCollisionSideEnter / RayCast2d
@@ -140,7 +140,14 @@ HollowKnight.WrongGravity/
 - 这个策略是刻意的：某些房间上方没有天花板，如果只做向上搜索会一直
   “找不到地面”；回退到向下搜索可以保持可用。
 - 向下回退使用 `GroundProbe.TryFindDown`，它和 `TryFindUp` 使用同一套
-  collider offset 修正；只有上下都找不到时才调用原版 `orig`。
+  collider offset 修正；非场景入口时，只有上下都找不到才调用原版 `orig`。
+- **场景入口例外**：`HeroController.EnterScene` 执行期间（`enteringScene`
+  标志为 true）不做向上搜索，改用原版方向的向下搜索
+  （`GroundProbe.TryFindDown`，保留 collider offset 修正）；找不到地面时才
+  回退 `orig`。原版在门口会向下找地面；若改用镜像向上搜索，门上方刚好是
+  低天花板时 Knight 会被放到天花板上，头部卡住，导致部分房间进门失败。
+  该标志只在原版 EnterScene 协程的 `MoveNext` 同步执行期间为 true，不会
+  影响长椅/危险重生后的镜像搜索。
 - 交互修正器不使用 `TryFindDown`：交互点只向上找天花板，找不到就保留原位。
 - 几何公式：
   - `scaleY = sign(transform.lossyScale.y)`
@@ -256,6 +263,8 @@ HollowKnight.WrongGravity/
   - 调 `ApplyEntryOffset`；
   - 调原版拿到协程；
   - 用 `RestoreEntryOffset` 包装，协程结束后恢复；
+  - 每次 `MoveNext` 前置 `enteringScene = true`，执行完立即清除，使新房间的
+    `FindGroundPoint/Y` 跳过向上搜索、改走原版方向的向下搜索；
   - 如果 `ApplyEntryOffset` 或原版在返回协程前抛异常，也会恢复。
 - `ApplyEntryOffset`：
   - DoorProfile 的 `applyEntryOffset` 优先；
@@ -342,7 +351,7 @@ HollowKnight.WrongGravity/
 
 ### 3.11 `WrongGravity.csproj`
 
-- `net472`、`Version 1.0.0.7`。
+- `net472`、`Version 1.0.0.8`。
 - 引用游戏 DLL、MMHOOK、UnityEngine、Vasi、PlayMaker。
 - 把 JSON 嵌入为 `WrongGravity.Data.WrongGravityData.json`。
 - Release 目标：
@@ -661,7 +670,7 @@ Release 目标会：
 4. 删除 `Output/`；
 5. 打印 SHA256。
 
-当前版本：`1.0.0.7`。
+当前版本：`1.0.0.8`。
 
 Release 构建结果：
 
@@ -669,7 +678,7 @@ Release 构建结果：
 0 warnings
 0 errors
 WrongGravity.zip
-SHA256 BA242B5ECC21AE05D659CCB3D6E65F63A4659F873A815CE1EAD6E3158D4B57C7
+SHA256 615B88E6F0902018E1A06C741397142940B607CAC3C3593041CE04D0892CC357
 ```
 
 当前 zip 内容：
@@ -698,7 +707,7 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 - [ ] 水面 / 酸液
 - [ ] 各种上/下/左/右门
 - [ ] 场景边缘向上掉出（顶部 kill plane）
-- [ ] 侧门进入后的落地点（FindGroundPoint 回退）
+- [ ] 左右门/门型门进入后的落地点（EnterScene 内按原版方向向下搜索）
 
 ### 13.2 Cdash
 
@@ -721,6 +730,7 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 - [ ] Tutorial_01 top1
 - [ ] Cliffs_02 bot2
 - [ ] 左右门
+- [ ] 低天花板房间从门口进入（不再卡头）
 - [ ]  Dream gate / bench transition
 - [ ] watchdog 不误触发
 
@@ -733,7 +743,9 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 - 敌人垂直击退已交换；但受击特效旋转、部分 Quake/boss FSM 动画仍可能使用原版方向。
 - RayCast2d 只覆盖 Superdash + active superDashing。
 - GetVelocity2d 只覆盖 Space.World。
-- FindGroundPoint 在上下都找不到时才回退到原版；没有天花板/地板的房间仍可能报原版错误。
+- FindGroundPoint 在场景入口期间（EnterScene）按原版方向向下搜索
+  （TryFindDown，含 offset 修正）；其余情况在上下都找不到时才回退到原版。
+  没有天花板/地板的房间仍可能报原版错误。
 - 交互修正基于组件/FSM 行为识别；无法识别的自定义交互对象需要 JSON 覆盖或扩展规则。
 - 门 entryOffset 默认规则基于 gate 名字，异常门需要 DoorProfile。
 - Bounds Cage 的 top collider 必须在同一个 GameObject 上。
@@ -742,10 +754,13 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 
 ---
 
-## 15. 从 1.0.0.2 到 1.0.0.7 的改动
+## 15. 从 1.0.0.2 到 1.0.0.8 的改动
 
 - 重构所有源文件，补充 XML 文档和行内注释。
 - `FindGroundPoint` / `FindGroundPointY` 改为“向上优先，修正后的向下回退，最后才用原版”。
+- 新增场景入口地面搜索例外：`EnterScene` 执行期间 `FindGroundPoint` /
+  `FindGroundPointY` 改为按原版方向向下搜索（`TryFindDown`，含 offset 修正），
+  修复部分低天花板房间进门卡头。
 - `CheckForBump` 修正垂直探针起点（+1 -> -1）和高度比较方向。
 - 相机改为“主相机只由 UpdateCameraMatrix 翻转；StartScene 只翻其他子相机”，
   并移除双重翻转。
@@ -759,7 +774,7 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 - 新增敌人垂直击退镜像（RecoilByDirection 交换 up/down）。
 - 新增 `FixInteractions`、`LogInteractions`、`Debug Draw`、`Verbose Log`。
 - 移除 Unity `Debug.Log` / `Debug.LogError`，保留可选的 DrawLine/DrawRay。
-- csproj 修正 README 复制路径（ProjectDir），版本号 1.0.0.7。
+- csproj 修正 README 复制路径（ProjectDir），版本号 1.0.0.8。
 - CI 改为 Windows + `gh release create`，避免已废弃的 release action。
 - README/DEVELOPMENT 重写，修正旧文档中与代码不一致的描述。
 
@@ -804,7 +819,10 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 - `CheckForBump` 的几何修复是按原版 IL 推导的，还没有在真实游戏里逐种台阶/
   平台/墙体验证。
 - `FindGroundPoint` / `FindGroundPointY` 采用“向上 → 修正向下 → 原版”的
-  回退；没有天花板/地板的房间仍可能产生原版错误。
+  回退；没有天花板/地板的房间仍可能产生原版错误。场景入口期间按原版方向
+  向下搜索，但仍需逐房间验证落地点。
+- 场景入口改为向下搜索后，Knight 可能先落在原版地板上，再由反转重力拉起；
+  这是为避开门口低天花板卡头而接受的过渡状态。
 - 相机目前只处理主 tk2d 相机和 StartScene 的其它子相机；额外相机、HUD、
   菜单相机、嵌套 tk2dCamera 还需要回归测试。
 - `Invert Gravity` 是启动开关；运行时关闭不会完整恢复 Hero 的 localScale/

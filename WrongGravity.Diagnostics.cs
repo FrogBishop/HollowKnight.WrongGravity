@@ -28,6 +28,14 @@ namespace WrongGravity
         private static MethodInfo finishedEnteringSceneMethod;
 
         /// <summary>
+        /// True only while the vanilla <see cref="HeroController.EnterScene"/> coroutine
+        /// body is executing (set around each <see cref="IEnumerator.MoveNext"/> call).
+        /// Ground searches made during scene entry deliberately use the vanilla downward
+        /// search; see <see cref="FindGroundPoint"/> for the reason.
+        /// </summary>
+        private bool enteringScene;
+
+        /// <summary>
         /// Logs every scene transition. sourceGate comes from TransitionPoint.lastEntered;
         /// it is reliable for normal gates but can be stale for isADoor gates because
         /// that static field is only assigned on the non-door path of OnTriggerEnter2D.
@@ -117,8 +125,29 @@ namespace WrongGravity
             {
                 if (routine != null)
                 {
-                    while (routine.MoveNext())
+                    while (true)
+                    {
+                        // The vanilla EnterScene body runs inside MoveNext. Mark that
+                        // synchronous window so FindGroundPoint/FindGroundPointY use the
+                        // original downward search while the new room places the Knight.
+                        // The flag is cleared before yielding, so it cannot leak into later
+                        // frames if the coroutine is stopped or never finishes.
+                        bool moved;
+                        enteringScene = true;
+                        try
+                        {
+                            moved = routine.MoveNext();
+                        }
+                        finally
+                        {
+                            enteringScene = false;
+                        }
+
+                        if (!moved)
+                            break;
+
                         yield return routine.Current;
+                    }
                 }
             }
             finally

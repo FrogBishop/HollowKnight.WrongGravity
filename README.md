@@ -4,7 +4,7 @@ A Hollow Knight 1.5.78.11833 mod that turns the Knight's gravity upside down whi
 keeping the screen readable: the Knight falls upward in world space, the camera
 projection is mirrored, and the level appears upside down on screen.
 
-Version 1.0.0.7.
+Version 1.0.0.8.
 
 This repository is a source mod, not a standalone game. Build it against the game's
 assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
@@ -19,6 +19,10 @@ assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
   camera.
 - Mirrors the tk2d camera projection with `Matrix4x4.Scale(1, -1, 1)`.
 - Reimplements the HeroController ray/ground checks that hard-code `Vector2.down`.
+- Uses the vanilla downward ground search (with the mod's collider-offset correction)
+  while `EnterScene` places the Knight at a door, so a low ceiling above the doorway
+  cannot wedge his head at the gate. Normal in-room ground searches (bench/hazard
+  respawn) stay mirrored.
 - Mirrors the PlayMaker collision, velocity and gravity actions used by hero FSMs.
 - Swaps up/down enemy knockback so a nail hit still knocks the enemy away on screen.
 - Patches the Crystal Dash (Superdash) FSM so holding the button no longer auto-dashes.
@@ -131,6 +135,14 @@ mid-scene. Change it and restart the game.
 
 ## Ground search policy
 
+**Scene-entry exception.** While `HeroController.EnterScene` is positioning the Knight
+at a door, `FindGroundPoint` and `FindGroundPointY` use the vanilla downward search
+instead of the mirrored upward search. It goes through the mod's corrected downward
+helper, so the flipped collider offset is still accounted for. Some rooms have a
+ceiling immediately above the doorway; the mirrored upward search would place the
+Knight's head against it and block the transition. Outside that window the mirrored
+policy below applies.
+
 The mod tries the mirrored search first:
 
 1. Cast upward on the Terrain layer.
@@ -155,7 +167,8 @@ All messages go to the Modding API log:
 - `[KillPlane]`: Bounds Cage top collider selection.
 - `[FSM]`: CheckCollisionSide / RayCast2d / velocity mirroring.
 - `[Cdash]`: Superdash state and hold/release logic.
-- `[Ground]`: upward/fallback ground searches (Verbose Log).
+- `[Ground]`: upward/fallback ground searches and the scene-entry downward search
+  (Verbose Log).
 - `[Bump]`: bump height details (Verbose Log).
 - `[Interaction]`: interaction/door trigger adjustments.
 
@@ -180,8 +193,10 @@ gates. The destination fields come from `SceneLoadInfo` and are reliable.
 - Enemy vertical knockback is mirrored by swapping Recoil up/down. Hit-effect
   rotations and some Quake/spell effects may still use unmirrored directions.
 - Up-slash/down-slash object orientation and some particle effects are not mirrored.
-- `FindGroundPoint` uses upward-first, corrected-downward, then vanilla fallback; a
-  room with neither a ceiling nor a floor can still produce the vanilla error.
+- Outside scene entry, `FindGroundPoint` uses upward-first, corrected-downward, then
+  vanilla fallback; a room with neither a ceiling nor a floor can still produce the
+  vanilla error. Scene entry itself uses the downward search (via the corrected
+  helper).
 - `RayCast2d` is mirrored only for the Superdash FSM while `cState.superDashing` is true.
 - `GetVelocity2d` is mirrored only for `Space.World`.
 - The current HeroController wrappers use `try/finally` where they touch
