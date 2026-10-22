@@ -16,8 +16,10 @@ namespace WrongGravity
     {
         /// <summary>
         /// Master switch. It is read in <c>Initialize</c> to decide whether any hooks are
-        /// installed. The menu warns that a restart is required; changing it at runtime
-        /// only stops the watchdog/Crystal Dash tick helpers, not already-installed hooks.
+        /// installed. The menu warns that a restart is required. Most hooks also check
+        /// this flag at runtime, but already-installed hooks cannot be removed and the
+        /// Knight's localScale/SPEED_TO_ENTER_SCENE_DOWN plus the Crystal Dash FSM patch
+        /// are not restored, so a full reset still requires a restart.
         /// </summary>
         public bool Enabled = true;
 

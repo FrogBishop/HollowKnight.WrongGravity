@@ -30,12 +30,6 @@ namespace WrongGravity
             get { return depth > 0; }
         }
 
-        /// <summary>Current nesting depth; useful for diagnostics.</summary>
-        public static int Depth
-        {
-            get { return depth; }
-        }
-
         /// <summary>Marks the beginning of a mirrored call.</summary>
         public static void Enter()
         {

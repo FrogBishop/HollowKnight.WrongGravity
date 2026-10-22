@@ -14,18 +14,19 @@ namespace WrongGravity
     /// In Vanilla, NPC/bench/tablet interaction triggers are placed around the floor.
     /// With inverted gravity the Knight stands on the ceiling, so those triggers are on
     /// the wrong side of the room. Instead of moving every NPC, this class moves the
-    /// *trigger collider* onto the ground point found by <see cref="GroundProbe"/>.
+    /// *trigger collider* onto the ceiling point found by <see cref="GroundProbe"/>.
     ///
     /// Important: interaction triggers are NOT identified by layer 19. That was an
     /// earlier assumption and moved unrelated interactive-object colliders. The real
     /// targets are:
     /// - RestBench components (benches);
-    /// - TransitionPoint components with isADoor == true (door-type transitions);
+    /// - TransitionPoint components with isADoor == true (or a name containing "door");
     /// - PlayMaker FSMs that call HeroController.CanTalk / CanInspect / CanInteract
     ///   through CallMethod / CallMethodProper (NPC dialogue, inspectables, shops, ...).
     ///
-    /// The collider itself is usually a trigger on the same GameObject or a child, so
-    /// each target group scans its children and only moves trigger BoxCollider2Ds.
+    /// The collider itself is usually a trigger on the same GameObject or a direct
+    /// child, so each target group scans itself and its direct children and only moves
+    /// trigger BoxCollider2Ds.
     ///
     /// Data overrides
     /// --------------
@@ -99,8 +100,7 @@ namespace WrongGravity
             if (!Config.Enabled || !Config.FixInteractions || mirrorData == null)
                 return;
 
-            HeroController hero = HeroController.instance;
-            if (hero == null)
+            if (HeroController.instance == null)
                 return;
 
             string scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
@@ -119,7 +119,7 @@ namespace WrongGravity
             }
 
             // Door-type transitions (isADoor) use the same kind of invisible trigger as
-            // NPC dialogue, so they need the same ground placement.
+            // NPC dialogue, so they need the same ceiling placement.
             TransitionPoint[] gates = UnityEngine.Object.FindObjectsOfType<TransitionPoint>();
             for (int i = 0; i < gates.Length; i++)
             {
@@ -221,7 +221,7 @@ namespace WrongGravity
 
         /// <summary>
         /// Moves every trigger BoxCollider2D under <paramref name="owner"/> onto the
-        /// ground/ceiling. Non-trigger colliders are left alone, and colliders that deal
+        /// ceiling. Non-trigger colliders are left alone, and colliders that deal
         /// damage are skipped so hazards are not moved by accident.
         /// </summary>
         private void ApplyTriggerGroup(GameObject owner, string scene, string kind)
@@ -270,11 +270,11 @@ namespace WrongGravity
                 if (profile == null && colliderPath != ownerPath)
                     profile = mirrorData.FindInteraction(scene, colliderPath);
 
-                if (!PlaceTriggerOnGround(box, profile))
+                if (!PlaceTriggerOnCeiling(box, profile))
                 {
                     marker.AdjustedIds.Remove(id);
                     if (Config.LogInteractions)
-                        LogWarn("[Interaction] No ground for scene='" + scene + "' path='" + colliderPath + "' kind=" + kind);
+                        LogWarn("[Interaction] No ceiling for scene='" + scene + "' path='" + colliderPath + "' kind=" + kind);
                     continue;
                 }
 
@@ -287,26 +287,95 @@ namespace WrongGravity
             }
         }
 
+        private static bool IsDoorTransition(TransitionPoint gate)
+        {
+            if (gate == null)
+                return false;
+
+            return gate.isADoor ||
+                gate.name.IndexOf("door", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         /// <summary>
-        /// Finds a ground point for a trigger and moves the BoxCollider2D centre onto it.
+        /// Moves a trigger onto the ceiling above it.
+        ///
+        /// Interaction points are always expected on the inverted-gravity floor, which
+        /// is the ceiling in world space. There is intentionally no downward fallback:
+        /// if a trigger is already on a ceiling (or the room has no ceiling), moving it
+        /// down would put it on the wrong side.
+        ///
+        /// For a half-buried trigger the ray origin is raised above the overlapping
+        /// floor first. Starting the ray at the trigger centre would produce a
+        /// distance-zero hit against that floor (Physics2D.queriesStartInColliders is
+        /// true by default), which previously made the box move below the floor.
         /// </summary>
-        private bool PlaceTriggerOnGround(BoxCollider2D box, InteractionProfile profile)
+        private bool PlaceTriggerOnCeiling(BoxCollider2D box, InteractionProfile profile)
         {
             HeroController hero = HeroController.instance;
             if (box == null || hero == null)
                 return false;
 
-            // Search from the trigger centre. A ceiling trigger may already touch the
-            // ceiling, so starting at bounds.max.y could start inside the collider.
-            Vector2 probe = new Vector2(box.bounds.center.x, box.bounds.center.y);
-            if (!GroundProbe.TryFindUp(hero, probe, true, out Vector3 ground) &&
-                !GroundProbe.TryFindDown(hero, probe, true, out ground))
+            UnityEngine.Bounds boxBounds = box.bounds;
+
+            // Start above the trigger, not at its centre. This alone avoids the
+            // start-inside hit for most half-buried prefab triggers.
+            Vector2 probe = new Vector2(boxBounds.center.x, boxBounds.max.y + 0.05f);
+
+            Collider2D[] overlaps = Physics2D.OverlapBoxAll(
+                boxBounds.center,
+                boxBounds.size,
+                0f,
+                GroundProbe.TerrainLayerMask);
+
+            bool overlappingTerrain = overlaps != null && overlaps.Length > 0;
+
+            if (overlappingTerrain)
             {
-                return false;
+                // If the trigger already overlaps terrain above its centre, it is on
+                // the ceiling side already. Leave it alone rather than searching for
+                // some higher surface.
+                for (int i = 0; i < overlaps.Length; i++)
+                {
+                    Collider2D terrain = overlaps[i];
+                    if (terrain != null && terrain.bounds.center.y >= boxBounds.center.y)
+                    {
+                        if (Config.LogInteractions)
+                            Log("[Interaction] '" + box.gameObject.name +
+                                "' already overlaps a ceiling-side collider; leaving it in place.");
+                        return true;
+                    }
+                }
+
+                // If the box is deeply buried in a floor, its top can still be inside
+                // that floor. Raise the origin above any floor-like overlapping terrain.
+                for (int i = 0; i < overlaps.Length; i++)
+                {
+                    Collider2D terrain = overlaps[i];
+                    if (terrain == null)
+                        continue;
+
+                    float top = terrain.bounds.max.y + 0.05f;
+                    if (top > probe.y)
+                        probe.y = top;
+                }
+            }
+
+            if (!GroundProbe.TryFindUp(hero, probe, true, out Vector3 ceilingPoint))
+            {
+                if (Config.LogInteractions)
+                {
+                    LogWarn("[Interaction] no ceiling for '" + box.gameObject.name +
+                        "' (overlap=" + overlappingTerrain + "); leaving it in place.");
+                }
+
+                // Overlapping triggers are considered handled (leave them alone);
+                // non-overlapping triggers are reported as "no ceiling" so the caller
+                // can retry in a later scene.
+                return overlappingTerrain;
             }
 
             float offsetY = profile != null && profile.applyOffset ? profile.offsetY : 0f;
-            float targetCenterY = ground.y + offsetY;
+            float targetCenterY = ceilingPoint.y + offsetY;
             float scaleY = box.transform.lossyScale.y;
             if (Mathf.Approximately(scaleY, 0f))
                 scaleY = 1f;
@@ -318,15 +387,6 @@ namespace WrongGravity
                 box.size = new Vector2(box.size.x, profile.sizeY);
 
             return true;
-        }
-
-        private static bool IsDoorTransition(TransitionPoint gate)
-        {
-            if (gate == null)
-                return false;
-
-            return gate.isADoor ||
-                gate.name.IndexOf("door", System.StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>

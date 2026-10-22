@@ -1,6 +1,6 @@
 # WrongGravity 开发记录
 
-版本：1.0.0.5  
+版本：1.0.0.7  
 目标游戏：Hollow Knight 1.5.78.11833  
 目标框架：.NET Framework 4.7.2  
 当前构建：0 warnings / 0 errors（Debug 与 Release 均已验证）
@@ -141,7 +141,7 @@ HollowKnight.WrongGravity/
   “找不到地面”；回退到向下搜索可以保持可用。
 - 向下回退使用 `GroundProbe.TryFindDown`，它和 `TryFindUp` 使用同一套
   collider offset 修正；只有上下都找不到时才调用原版 `orig`。
-- `GroundProbe.TryFindDown` 也提供给交互修正器做回退。
+- 交互修正器不使用 `TryFindDown`：交互点只向上找天花板，找不到就保留原位。
 - 几何公式：
   - `scaleY = sign(transform.lossyScale.y)`
   - `worldOffsetY = collider.offset.y * scaleY`
@@ -164,8 +164,17 @@ HollowKnight.WrongGravity/
 - 每个目标取自身及**直接子对象**上的 `isTrigger == true` 的 `BoxCollider2D`；
   跳过带 `DamageHero` 的危险触发器。
 - 对每个触发器：
-  1. 从触发器中心向上找地面（长距离），失败则向下找；
-  2. 计算将触发器中心放到地面点所需的 `offset.y`；
+  0. 射线的起点不是框中心，而是 `box.bounds.max.y + 0.05`；
+  1. 用 `Physics2D.OverlapBoxAll` 收集当前重叠的 Terrain collider；
+  2. 如果框陷得比较深、上边缘仍在重叠地板内部，就把起点抬到该地板顶面
+     之上；只对“中心在框中心下方”的 floor-like terrain 这样做，避免把
+     起点抬到天花板上方；
+  3. 从该起点只向上找天花板。Unity 的 Physics2D 起点在碰撞体内会在
+     distance≈0 处命中，所以 `GroundProbe.FindNearest` 也会跳过
+     distance≈0 的命中；
+  4. 找不到天花板时保留原位。交互点只在向上方向有意义，不做向下回退，
+     否则本来就在天花板上的框会被移到地板；
+  2. 计算将触发器中心放到天花板点所需的 `offset.y`；
   3. 修改 `BoxCollider2D.offset`，而不是移动 NPC 本体；
   4. 如果 JSON profile 指定 `applySize`，修改 `size.y`。
 - 使用 `HashSet<int>` 记录已处理实例，并给 collider GameObject 加
@@ -333,7 +342,7 @@ HollowKnight.WrongGravity/
 
 ### 3.11 `WrongGravity.csproj`
 
-- `net472`、`Version 1.0.0.5`。
+- `net472`、`Version 1.0.0.7`。
 - 引用游戏 DLL、MMHOOK、UnityEngine、Vasi、PlayMaker。
 - 把 JSON 嵌入为 `WrongGravity.Data.WrongGravityData.json`。
 - Release 目标：
@@ -485,8 +494,10 @@ DoorProfile 覆盖。代码注释里也明确写了这是权宜之计。
 
 - 取自身和**直接子对象**上的 `BoxCollider2D`；
 - 只处理 `isTrigger == true`，且没有 `DamageHero` 的；
-- 先向上找地面，失败再向下；
-- 把 collider 的 `offset.y` 调到地面点，保持 X 不变；
+- 射线起点抬到框顶上方；如果框深陷在地板里，再抬到重叠地板顶面之上；
+- 只向上搜索天花板，跳过 distance≈0 的起点命中；
+- 找不到天花板时保留原位；不做向下回退，避免把天花板上的框移到地板；
+- 把 collider 的 `offset.y` 调到天花板点，保持 X 不变；
 - 不移动 NPC 本体，只移动触发器；
 - 每个实例只处理一次；持久化对象用 `InteractionAdjustedMarker` 标记，跨场景不会重复叠加。
 
@@ -506,9 +517,23 @@ DoorProfile 覆盖。代码注释里也明确写了这是权宜之计。
 - `path` 可以是完整路径，也可以是后缀。
 - profile 不只用于覆盖位置，也会作为**发现目标**：即使组件/FSM 启发式识别
   不到，也可以按 path 直接找到对象。
-- `offsetY` 是相对地面点的偏移。
+- `offsetY` 是相对天花板点的偏移。
 - `sizeY` 会替换 BoxCollider2D 的高度。
 - 如果自动放置不对，优先加 profile，而不是改代码。
+
+### 7.2.1 半个卡在地里的触发器
+
+- 某些 prefab 的交互框故意有一半嵌在地形里。Unity 的
+  `Physics2D.queriesStartInColliders` 默认是 true，所以从框中心向上的射线会
+  在 distance=0 处命中它嵌入的那块地板；如果当成“天花板”，框就会被移到
+  地板下面。
+- 修正器不把射线起点放在框中心，而是放在框顶上方；如果框仍陷在地板内部，
+  再把起点抬到重叠地板顶面之上。
+- 这样射线不会在 distance=0 处命中嵌入地板，而是继续向上找真正的天花板。
+- 如果框已经和“中心在框中心上方”的 Terrain 重叠，说明它已经在天花板一侧，
+  直接保留原位，不再寻找更高的表面。
+- 找不到天花板时保留原位置；不做向下回退，避免把原本在天花板上的框移到地板。
+- 这个处理只改 `BoxCollider2D.offset`，不改 NPC/门本体的位置。
 
 ### 7.3 已知风险
 
@@ -636,7 +661,7 @@ Release 目标会：
 4. 删除 `Output/`；
 5. 打印 SHA256。
 
-当前版本：`1.0.0.5`。
+当前版本：`1.0.0.7`。
 
 Release 构建结果：
 
@@ -644,7 +669,7 @@ Release 构建结果：
 0 warnings
 0 errors
 WrongGravity.zip
-SHA256 6D4EF09016647731C70926A8802DE9560D5D20F87D1193A83A51A4970F0B8AA1
+SHA256 BA242B5ECC21AE05D659CCB3D6E65F63A4659F873A815CE1EAD6E3158D4B57C7
 ```
 
 当前 zip 内容：
@@ -688,6 +713,7 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 - [ ] JSON profile 覆盖的异常交互点
 - [ ] 长椅、NPC 对话、调查物、商店的触发器被移动到正确一侧
 - [ ] 门型 transition（isADoor）仍能正常触发
+- [ ] 一半嵌在地形里的交互框不会被移动到地板下面
 - [ ] 非交互的 layer 19 对象不再被错误移动
 
 ### 13.4 门
@@ -716,7 +742,7 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 
 ---
 
-## 15. 从 1.0.0.2 到 1.0.0.5 的改动
+## 15. 从 1.0.0.2 到 1.0.0.7 的改动
 
 - 重构所有源文件，补充 XML 文档和行内注释。
 - `FindGroundPoint` / `FindGroundPointY` 改为“向上优先，修正后的向下回退，最后才用原版”。
@@ -728,15 +754,74 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 - 顶部 kill plane 支持多个 Bounds Cage，并缓存/禁用。
 - Cdash 补丁增加前置校验，避免半改 FSM。
 - 新增交互/门型 transition 触发器自动修正 + JSON profile；不再使用 layer 19 过滤。
+- 新增交互框 Terrain 重叠检测：射线起点抬到框顶/地板顶之上，只向上找
+  天花板；找不到则保留原位，不做向下回退。
 - 新增敌人垂直击退镜像（RecoilByDirection 交换 up/down）。
 - 新增 `FixInteractions`、`LogInteractions`、`Debug Draw`、`Verbose Log`。
 - 移除 Unity `Debug.Log` / `Debug.LogError`，保留可选的 DrawLine/DrawRay。
-- csproj 修正 README 复制路径（ProjectDir），版本号 1.0.0.5。
+- csproj 修正 README 复制路径（ProjectDir），版本号 1.0.0.7。
 - CI 改为 Windows + `gh release create`，避免已废弃的 release action。
 - README/DEVELOPMENT 重写，修正旧文档中与代码不一致的描述。
 
 ---
 
-## 16. 许可
+## 16. 尚未完成的目标
+
+本节明确列出还没有完成或还没有经过充分实测的内容。它不是承诺，只是当前
+代码和测试状态的真实清单。
+
+### 16.1 交互与门（优先级最高）
+
+- **更多交互对象识别**：当前识别 `RestBench`、door-type `TransitionPoint`、
+  以及 `CallMethod` / `CallMethodProper` 调用 `CanTalk` / `CanInspect` /
+  `CanInteract` 的 FSM。自定义 NPC、商店、石碑如果使用别的调用方式，仍可能漏识别。
+- **非 BoxCollider2D 触发器**：交互修正只处理 BoxCollider2D；Circle/Polygon/
+  Capsule 等还没有实现。
+- **更深的触发器层级**：当前只扫描目标自身和直接子对象；触发器在更深层时
+  需要 JSON profile 指到那个子对象，或扩展扫描规则。
+- **普通 transition gate**：目前只移动 door-type（`isADoor` 或名字含 door）
+  的判定框；普通上下左右门的判定框是否也需要移动，还没有系统测试。
+- **door-type transition 的完整回归**：门型触发框移动后，门动画、进入方向、
+  `entryOffset`、watchdog 都需要逐门验证。
+- **半嵌交互框**：现在会抬高射线起点到框顶/地板顶之上，只向上找天花板；
+  还需要在更多场景验证不会把已经位于天花板的框误判。
+- **交互 profile 的自动发现**：JSON path 可以作为目标发现手段，但 path 匹配
+  目前是后缀匹配；复杂层级/同名对象可能需要更精确的匹配。
+- **`CanTalk/CanInspect/CanInteract` 的其它调用来源**：目前只扫描 PlayMaker
+  `CallMethod`；如果游戏用 UnityEvent、SendMessage 或反射调用，不会被识别。
+
+### 16.2 视觉 / 法术 / 水
+
+- 水面、酸液、熔岩的 surface / 溅射 / 死亡位置还没有镜像。
+- 上吼、下砸、Quake 的对象朝向和冲击方向还没有完整镜像。
+- 粒子、trail、命中特效、部分法术对象仍是原版方向。
+- `DownSpellMode == 1`（Screen Down）仍只是实验开关，没有完整实现。
+- 敌人受击特效的旋转、`HealthManager.directionOfLastAttack` /
+  `GetAttackDirection()`、部分 Boss 的自定义受击动画还没有镜像。
+
+### 16.3 稳定性 / 兼容性
+
+- `CheckForBump` 的几何修复是按原版 IL 推导的，还没有在真实游戏里逐种台阶/
+  平台/墙体验证。
+- `FindGroundPoint` / `FindGroundPointY` 采用“向上 → 修正向下 → 原版”的
+  回退；没有天花板/地板的房间仍可能产生原版错误。
+- 相机目前只处理主 tk2d 相机和 StartScene 的其它子相机；额外相机、HUD、
+  菜单相机、嵌套 tk2dCamera 还需要回归测试。
+- `Invert Gravity` 是启动开关；运行时关闭不会完整恢复 Hero 的 localScale/
+  `SPEED_TO_ENTER_SCENE_DOWN`，必须重启。
+- 只支持 Hollow Knight 1.5.78.11833；大量 FSM 状态名、事件名、私有字段名
+  是硬编码的。
+- `entryVelocityX/Y` / `applyEntryVelocity` 仍只解析，没有应用。
+
+### 16.4 工程 / 测试
+
+- 没有自动化测试；`dotnet build` 只能验证编译，不能验证游戏内行为。
+- CI 的 Windows Release 构建只做了本地编译验证，GitHub Actions 实际运行
+  还需要在 tag 上确认。
+- 测试清单中的交互、门、Cdash、法术、水面项目仍需逐项勾选。
+- 文档和 release hash 需要随每次代码改动更新。
+- `WrongGravity.zip` 不进入 git；发布包由 Release target/CI 生成。
+
+## 17. 许可
 
 GPLv3。见 `LICENSE`。

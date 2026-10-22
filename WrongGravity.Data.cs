@@ -60,13 +60,13 @@ namespace WrongGravity
         /// </summary>
         public string path = "";
 
-        /// <summary>Y offset from the ground point found by the fixer.</summary>
+        /// <summary>Y offset from the ceiling point found by the fixer.</summary>
         public float offsetY;
 
         /// <summary>Optional replacement BoxCollider2D height.</summary>
         public float sizeY;
 
-        /// <summary>Use <see cref="offsetY"/> instead of the default ground placement.</summary>
+        /// <summary>Use <see cref="offsetY"/> instead of the default ceiling placement.</summary>
         public bool applyOffset;
 
         /// <summary>Use <see cref="sizeY"/> to resize the trigger.</summary>

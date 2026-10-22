@@ -4,7 +4,7 @@ A Hollow Knight 1.5.78.11833 mod that turns the Knight's gravity upside down whi
 keeping the screen readable: the Knight falls upward in world space, the camera
 projection is mirrored, and the level appears upside down on screen.
 
-Version 1.0.0.5.
+Version 1.0.0.7.
 
 This repository is a source mod, not a standalone game. Build it against the game's
 assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
@@ -25,8 +25,10 @@ assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
 - Enables the top `Bounds Cage` kill collider so falling upward out of a room respawns
   the Knight like falling downward does in vanilla.
 - Moves interaction triggers (benches, door-type transitions, and NPC/inspectable
-  PlayMaker triggers) onto the found floor/ceiling. Unusual triggers can be overridden
-  in `Data/WrongGravityData.json`.
+  PlayMaker triggers) onto the ceiling above them. If a trigger is half-buried, the
+  search origin is raised above the buried floor first, so it reaches the real ceiling
+  instead of hitting the floor at distance zero; if no ceiling exists it is left in
+  place. Unusual triggers can be overridden in `Data/WrongGravityData.json`.
 
 ## Requirements
 
@@ -67,7 +69,7 @@ Settings are exposed through the Modding API menu and saved as
 | Mirror FSM Collision | On | Mirror `CheckCollisionSide` / `RayCast2d` for hero FSMs. |
 | Mirror FSM Velocity | On | Mirror `SetVelocity2d`, `GetVelocity2d`, `SetGravity2dScale`. |
 | Enemy Recoil | On | Swap up/down enemy knockback so it matches the mirrored camera. |
-| Fix Interactions | On | Move detected NPC/bench/door-type interaction triggers to the found floor/ceiling. |
+| Fix Interactions | On | Move detected NPC/bench/door-type interaction triggers to the ceiling above them. |
 | Interaction Log | Off | Log every trigger adjusted by the fixer. |
 | Debug Draw | Off | Draw collision/ground probe rays. Noisy. |
 | Verbose Log | Off | Extra `[Ground]`, `[Bump]`, `[Cdash]` details. |
@@ -123,7 +125,7 @@ mid-scene. Change it and restart the game.
   `Sly/Interaction` also matches `_SceneManager/Sly/Interaction`. Profiles are also
   used as a discovery fallback: a target that the component/FSM scan cannot recognise
   can still be named directly here.
-- `offsetY`: Y offset from the ground point found by the fixer.
+- `offsetY`: Y offset from the ceiling point found by the fixer.
 - `sizeY`: optional replacement height for a `BoxCollider2D`.
 - `applyOffset` / `applySize`: enable the two fields above.
 
@@ -139,8 +141,11 @@ The mod tries the mirrored search first:
 4. Only if there is neither a ceiling nor a floor does it call the vanilla method, which
    then logs its usual "could not find ground" error.
 
-The same policy is used by the interaction fixer, with a downward fallback when a room
-has no usable ceiling.
+The interaction fixer searches **upward only**. That is intentional: interaction
+points belong on the inverted-gravity floor (the ceiling), and a downward fallback would
+move a trigger that is already on a ceiling, or a trigger in a room without a ceiling,
+to the wrong side. For half-buried triggers the ray origin is raised above the buried
+floor before the upward search; if there is no ceiling, the trigger is left in place.
 
 ## Debugging
 
@@ -175,12 +180,12 @@ gates. The destination fields come from `SceneLoadInfo` and are reliable.
 - Enemy vertical knockback is mirrored by swapping Recoil up/down. Hit-effect
   rotations and some Quake/spell effects may still use unmirrored directions.
 - Up-slash/down-slash object orientation and some particle effects are not mirrored.
-- `FindGroundPoint` uses an upward-first/vanilla-fallback search; a room with neither a
-  ceiling nor a floor can still produce the vanilla error.
+- `FindGroundPoint` uses upward-first, corrected-downward, then vanilla fallback; a
+  room with neither a ceiling nor a floor can still produce the vanilla error.
 - `RayCast2d` is mirrored only for the Superdash FSM while `cState.superDashing` is true.
 - `GetVelocity2d` is mirrored only for `Space.World`.
-- Not every HeroController wrapper is guaranteed to be exception-safe forever; the
-  current wrappers use `try/finally` where they touch velocity/gravity.
+- The current HeroController wrappers use `try/finally` where they touch
+  velocity/gravity; new wrappers must follow the same `BeginMirror`/`EndMirror` rule.
 
 ## Repository layout
 

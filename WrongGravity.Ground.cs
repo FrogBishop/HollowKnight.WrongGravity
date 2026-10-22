@@ -97,7 +97,7 @@ namespace WrongGravity
     internal static class GroundProbe
     {
         /// <summary>Physics layer 8 ("Terrain") in Hollow Knight 1.5.78.</summary>
-        private const int TerrainLayerMask = 1 << 8;
+        public const int TerrainLayerMask = 1 << 8;
 
         /// <summary>Vanilla's small epsilon that keeps the returned point just off the surface.</summary>
         private const float SurfaceEpsilon = 0.01f;
@@ -106,11 +106,6 @@ namespace WrongGravity
         /// Tries to find a ceiling above <paramref name="start"/> and returns the Knight
         /// transform position at which the top of the collider would touch it.
         /// </summary>
-        /// <param name="hero">Current Knight.</param>
-        /// <param name="start">World-space ray origin.</param>
-        /// <param name="useExtended">Use the longer vanilla search distance.</param>
-        /// <param name="point">Resulting transform position (z taken from the Knight).</param>
-        /// <returns>True when a ceiling was hit.</returns>
         public static bool TryFindUp(HeroController hero, Vector2 start, bool useExtended, out Vector3 point)
         {
             point = default(Vector3);
@@ -122,7 +117,7 @@ namespace WrongGravity
                 return false;
 
             float distance = GetSearchDistance(hero, useExtended);
-            RaycastHit2D hit = Physics2D.Raycast(start, Vector2.up, distance, TerrainLayerMask);
+            RaycastHit2D hit = FindNearest(start, Vector2.up, distance);
             if (hit.collider == null)
                 return false;
 
@@ -138,8 +133,9 @@ namespace WrongGravity
 
         /// <summary>
         /// Tries to find a floor below <paramref name="start"/>. This is the mirrored
-        /// counterpart of <see cref="TryFindUp"/> and is used as the interaction fixer's
-        /// fallback when a room has no usable ceiling.
+        /// counterpart of <see cref="TryFindUp"/> and is used by the HeroController
+        /// ground hooks when no ceiling exists. Interaction triggers intentionally use
+        /// an upward-only search and do not call this method.
         /// </summary>
         public static bool TryFindDown(HeroController hero, Vector2 start, bool useExtended, out Vector3 point)
         {
@@ -152,7 +148,7 @@ namespace WrongGravity
                 return false;
 
             float distance = GetSearchDistance(hero, useExtended);
-            RaycastHit2D hit = Physics2D.Raycast(start, Vector2.down, distance, TerrainLayerMask);
+            RaycastHit2D hit = FindNearest(start, Vector2.down, distance);
             if (hit.collider == null)
                 return false;
 
@@ -164,6 +160,37 @@ namespace WrongGravity
             float y = hit.point.y + SurfaceEpsilon + halfHeight - worldOffsetY;
             point = new Vector3(hit.point.x, y, hero.transform.position.z);
             return true;
+        }
+
+        /// <summary>
+        /// Finds the nearest terrain hit along a ray and skips distance-zero hits.
+        ///
+        /// Unity's Physics2D.queriesStartInColliders defaults to true, so a ray that
+        /// starts inside a collider reports that collider at distance 0. Interaction
+        /// triggers are often half-buried in a floor; the caller moves the ray origin
+        /// above that floor before calling this method, but skipping distance-zero hits
+        /// remains a useful guard for all callers.
+        /// </summary>
+        private static RaycastHit2D FindNearest(Vector2 origin, Vector2 direction, float distance)
+        {
+            RaycastHit2D[] hits = Physics2D.RaycastAll(origin, direction, distance, TerrainLayerMask);
+            RaycastHit2D best = default(RaycastHit2D);
+            float bestDistance = float.MaxValue;
+
+            for (int i = 0; i < hits.Length; i++)
+            {
+                RaycastHit2D hit = hits[i];
+                if (hit.collider == null || hit.distance <= 0.001f)
+                    continue;
+
+                if (hit.distance < bestDistance)
+                {
+                    best = hit;
+                    bestDistance = hit.distance;
+                }
+            }
+
+            return best;
         }
 
         private static Collider2D GetCollider(HeroController hero)
