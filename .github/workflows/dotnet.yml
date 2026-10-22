@@ -1,41 +1,35 @@
 name: .NET
 
+# Build a release package when a tag is pushed. The project targets .NET Framework 4.7.2,
+# so the runner is Windows (the Linux image would need extra reference assemblies).
 on:
   push:
     tags:
       - "*"
 
+permissions:
+  contents: write
+
 jobs:
   build:
-
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 8.0.x
-    - name: Restore dependencies
-      run: dotnet restore
-    - name: Build release
-      run: dotnet build --no-restore -p:Configuration=Release
-    - name: Create release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: ${{ github.ref }}
-        draft: false
-        prerelease: false
-    - name: Upload release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./WrongGravity.zip
-        asset_name: WrongGravity.zip
-        asset_content_type: WrongGravity/zip
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build release
+        run: dotnet build --no-restore -c Release
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" WrongGravity.zip --title "${{ github.ref_name }}" --notes "WrongGravity ${{ github.ref_name }}"

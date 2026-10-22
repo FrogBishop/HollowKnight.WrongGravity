@@ -1,0 +1,15 @@
+{
+  "doors": [
+    {
+      "scene": "Tutorial_01",
+      "gate": "top1",
+      "forceControlAfter": 1.0
+    },
+    {
+      "scene": "Cliffs_02",
+      "gate": "bot2",
+      "forceControlAfter": 1.0
+    }
+  ],
+  "interactions": []
+}

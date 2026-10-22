@@ -1,0 +1,23 @@
+# Build outputs
+bin/
+obj/
+Output/
+WrongGravity.zip
+
+# IDE / editor
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local logs / settings produced next to the DLL
+ModLog.txt
+*.GlobalSettings.json
+*.GlobalSettings.json.bak

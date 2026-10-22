@@ -1,12 +1,15 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>net472</TargetFramework>
         <AssemblyTitle>WrongGravity</AssemblyTitle>
         <Product>Wrong Gravity</Product>
         <OutputPath>bin\$(Configuration)\</OutputPath>
         <LangVersion>latest</LangVersion>
-        <Version>1.0.0.2</Version>
+        <Version>1.0.0.3</Version>
     </PropertyGroup>
+
+    <!-- Game and modding references. These are compile-time references only; they are
+         not shipped inside WrongGravity.zip. -->
     <ItemGroup>
         <Reference Include="Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
             <HintPath>References\Assembly-CSharp.dll</HintPath>
@@ -26,15 +29,30 @@
         <Reference Include="Vasi, Version=2.0.0.0, Culture=neutral, PublicKeyToken=null">
             <HintPath>References\Vasi.dll</HintPath>
         </Reference>
+        <Reference Include="PlayMaker">
+            <HintPath>References\PlayMaker.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
     </ItemGroup>
 
+    <!-- The JSON data file is embedded into the DLL; nothing extra is shipped. -->
+    <ItemGroup>
+        <None Remove="Data\WrongGravityData.json" />
+        <EmbeddedResource Include="Data\WrongGravityData.json">
+            <LogicalName>WrongGravity.Data.WrongGravityData.json</LogicalName>
+        </EmbeddedResource>
+    </ItemGroup>
+
+    <!-- Release packaging: DLL + PDB + README. The README copy uses ProjectDir, not
+         SolutionDir, because the documented build command builds the .csproj directly
+         and SolutionDir is *Undefined* in that case. -->
     <Target Name="CreateReleaseZip" AfterTargets="PostBuildEvent" Condition="'$(Configuration)' == 'Release'">
         <MakeDir Directories="$(ProjectDir)Output" />
         <Delete Files="$(ProjectDir)/$(TargetName).zip" />
-        <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ProjectDir)/Output/" />
-        <Copy SourceFiles="$(TargetDir)$(TargetName).pdb" DestinationFolder="$(ProjectDir)/Output/" />
-        <Copy Condition="Exists('$(SolutionDir)/README.md')" SourceFiles="$(SolutionDir)/README.md" DestinationFolder="$(ProjectDir)/Output/" ContinueOnError="true" />
-        <ZipDirectory DestinationFile="$(ProjectDir)/$(TargetName).zip" SourceDirectory="$(ProjectDir)/Output" />
+        <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ProjectDir)Output/" />
+        <Copy SourceFiles="$(TargetDir)$(TargetName).pdb" DestinationFolder="$(ProjectDir)Output/" />
+        <Copy Condition="Exists('$(ProjectDir)README.md')" SourceFiles="$(ProjectDir)README.md" DestinationFolder="$(ProjectDir)Output/" ContinueOnError="true" />
+        <ZipDirectory DestinationFile="$(ProjectDir)/$(TargetName).zip" SourceDirectory="$(ProjectDir)Output" />
         <RemoveDir Directories="$(ProjectDir)Output" />
 
         <GetFileHash Files="$(ProjectDir)/$(TargetName).zip" Algorithm="SHA256">
