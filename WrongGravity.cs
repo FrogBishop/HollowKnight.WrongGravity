@@ -105,6 +105,11 @@ namespace WrongGravity
             On.HutongGames.PlayMaker.Actions.GetVelocity2d.DoGetVelocity += GetVelocity2dHook;
             On.HutongGames.PlayMaker.Actions.SetGravity2dScale.DoSetGravityScale += SetGravity2dScaleHook;
 
+            // Bench seating offsets and interaction-only horizontal alignment.
+            On.HutongGames.PlayMaker.Actions.Vector3Add.DoVector3Add += BenchVector3AddHook;
+            On.HutongGames.PlayMaker.Actions.Translate.DoTranslate += BenchTranslateHook;
+            On.HutongGames.PlayMaker.Actions.GetPosition.DoGetPosition += InteractionGetPositionHook;
+
             // Enemy knockback: Recoil centralises HealthManager/BeginRecoil/dream-nail hits.
             On.Recoil.RecoilByDirection += RecoilByDirectionHook;
 

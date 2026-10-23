@@ -1,6 +1,7 @@
 # WrongGravity 开发记录
 
-版本：1.0.0.8  
+版本：1.0.0.9
+
 目标游戏：Hollow Knight 1.5.78.11833  
 目标框架：.NET Framework 4.7.2  
 当前构建：0 warnings / 0 errors（Debug 与 Release 均已验证）
@@ -72,6 +73,7 @@ HollowKnight.WrongGravity/
   WrongGravity.cs                 入口、Hook 注册、相机、Hero wrapper、碰撞/地面重写
   WrongGravity.Ground.cs          GroundProbe + FindGroundPoint/Y（入口走向下搜索，其余向上优先/向下回退）
   WrongGravity.Interactions.cs     交互/门型 transition 触发器修正 + JSON profile
+  WrongGravity.InteractionFsm.cs   长椅入座高度镜像 + 交互后取消强制 X 走位
   WrongGravity.Mirror.cs          MirrorContext / MirrorEntity
   WrongGravity.FsmMirror.cs       CheckCollisionSide / CheckCollisionSideEnter / RayCast2d
   WrongGravity.FsmVelocity.cs     SetVelocity2d / GetVelocity2d / SetGravity2dScale
@@ -188,6 +190,29 @@ HollowKnight.WrongGravity/
   `InteractionAdjustedMarker`；即使持久化对象跨场景保留，也不会重复叠加 offset。
 - 场景名变化时清空缓存。
 - JSON 的 `path` 支持精确匹配或后缀匹配。
+
+### 3.3.1 `WrongGravity.InteractionFsm.cs`
+
+- 长椅 `Bench Control` 的 `Start Rest` 先读取 Hero 当前位置到 `Sit Vector`，
+  用 `Vector3Add` 加上 `Adjust Vector`，再用 `iTweenMoveTo` 完成入座。
+- Hook `Vector3Add.DoVector3Add`，在这个变量第一次使用前仅翻转
+  `Adjust Vector.y`；X/Z 不变。德特茅斯长椅的原始 Y 为 +0.2，修正为 -0.2，
+  使入座离开世界上方的天花板。
+- 读档坐在长椅时，`Kinemetise` 用 `Translate` 应用同一个变量；对应的
+  `Translate.DoTranslate` Hook 覆盖这个先于手动入座的入口。
+- `ConditionalWeakTable` 按变量实例记录修正，重复坐下不会来回翻转；
+  共享的偏移也让后续生成 `Adjust Vector Inv` 时使用一致的方向。
+- NPC、商店、调查点和车站铃铛的 `Check Proximity` 会先用 `GetPosition`
+  读取 Hero X，再经 `BoolAllTrue` / `FloatInRange` / `BoolTest` 进入
+  `Move Hero Left/Right`，等待角色走到指定 X 范围。
+- Hook `GetPosition.DoGetPosition`，仅在该状态读取 Hero 世界坐标 X 时，
+  清除会进入左右走位状态的事件字段。先验证 FSM 有有效的非走位
+  `FINISHED` 出口，再进行修改。
+- 位置读数、转向、交互前置条件、对话/商店事件和归还控制权仍走原版流程；
+  不会进入自动走位状态，也不会传送角色到目标 X。
+- 补丁在动作执行时应用，因此也覆盖后续才启用的对象。两个修正由
+  `Config.Enabled` 控制，独立于仅控制触发器迁移的 `Config.FixInteractions`。
+- 记录输出使用 `[Interaction]`，受 `LogInteractions` 控制。
 
 ### 3.4 `WrongGravity.Mirror.cs`
 
@@ -351,7 +376,7 @@ HollowKnight.WrongGravity/
 
 ### 3.11 `WrongGravity.csproj`
 
-- `net472`、`Version 1.0.0.8`。
+- `net472`、`Version 1.0.0.9`。
 - 引用游戏 DLL、MMHOOK、UnityEngine、Vasi、PlayMaker。
 - 把 JSON 嵌入为 `WrongGravity.Data.WrongGravityData.json`。
 - Release 目标：
@@ -648,7 +673,7 @@ Unity 中 disabled Collider2D 的 `bounds` 是零。原版 `Bounds Cage` 的
 - `[Cdash]`：Superdash 状态和 hold/release。
 - `[Ground]`：ground search（Verbose Log）。
 - `[Bump]`：bump 高度（Verbose Log）。
-- `[Interaction]`：交互触发器调整。
+- `[Interaction]`：交互触发器调整、长椅高度镜像、强制走位分支移除。
 
 旧的 `Debug.Log` / `Debug.LogError` 已移除；只有 `Debug.DrawLine` /
 `Debug.DrawRay` 在 `Debug Draw` 开启时使用。
@@ -658,7 +683,7 @@ Unity 中 disabled Collider2D 的 `bounds` 是零。原版 `Bounds Cage` 的
 ## 12. 构建与发布
 
 ```powershell
-cd D:\HKProjects\WrongGravity\HollowKnight.WrongGravity
+cd D:\HKProjects\HollowKnight.WrongGravity
 dotnet build WrongGravity.csproj -c Release --nologo
 ```
 
@@ -670,7 +695,7 @@ Release 目标会：
 4. 删除 `Output/`；
 5. 打印 SHA256。
 
-当前版本：`1.0.0.8`。
+当前版本：`1.0.0.9`。
 
 Release 构建结果：
 
@@ -678,7 +703,7 @@ Release 构建结果：
 0 warnings
 0 errors
 WrongGravity.zip
-SHA256 615B88E6F0902018E1A06C741397142940B607CAC3C3593041CE04D0892CC357
+SHA256 D12AA8F6679E26AA4E323564B74F448764559021132E34EA513E3B97C67EE075
 ```
 
 当前 zip 内容：
@@ -724,6 +749,11 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 - [ ] 门型 transition（isADoor）仍能正常触发
 - [ ] 一半嵌在地形里的交互框不会被移动到地板下面
 - [ ] 非交互的 layer 19 对象不再被错误移动
+- [ ] 长椅重复坐下/起身时，入座高度向远离天花板的方向移动
+- [ ] 在长椅读档以及死亡后长椅复活，坐姿高度方向正确
+- [ ] NPC 要求站到另一侧但路径被地形挡住时，能在当前位置开始对话
+- [ ] 斯莱商店、地图店、调查石碑、车站铃铛不再强制走到特定 X
+- [ ] 跳过走位后，角色朝向、交互结束和归还控制权正常
 
 ### 13.4 门
 
@@ -747,6 +777,8 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
   （TryFindDown，含 offset 修正）；其余情况在上下都找不到时才回退到原版。
   没有天花板/地板的房间仍可能报原版错误。
 - 交互修正基于组件/FSM 行为识别；无法识别的自定义交互对象需要 JSON 覆盖或扩展规则。
+- 取消交互走位针对原版 `Check Proximity` 与 `Move Hero Left/Right` 结构；
+  改名或使用其他状态结构的自定义交互 FSM 需要扩展适配。
 - 门 entryOffset 默认规则基于 gate 名字，异常门需要 DoorProfile。
 - Bounds Cage 的 top collider 必须在同一个 GameObject 上。
 - 不是所有可能的 HeroController 入口都经过 mirror wrapper；新增入口必须
@@ -754,7 +786,21 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 
 ---
 
-## 15. 从 1.0.0.2 到 1.0.0.8 的改动
+## 15. 版本改动
+
+### 15.1 1.0.0.9
+
+- 修正长椅 `Adjust Vector.y` 的方向，覆盖手动入座和读档坐姿，并避免重复翻转。
+- 移除原版交互 `Check Proximity` 中强制左右走位的分支，交互直接在当前 X 继续。
+- 使用本地 1.5.78 游戏资源核对德特茅斯、斯莱商店、地图店、德特茅斯鹿角站、
+  教程场景的实际 FSM。
+- 临时回归程序调用本次补丁的实际方法，通过 268 项断言：包括长椅偏移方向、
+  重复调用、作用范围，以及从资源重建的 25 个交互状态图中的 78 个走位分支。
+  检查确认转向/完成事件保留，缺少完成出口的状态不会被改动。
+- 上述检查在游戏进程外执行，不包含实际物理、动画和输入回归；第 13 节的
+  游戏内测试仍待执行。
+
+### 15.2 从 1.0.0.2 到 1.0.0.8
 
 - 重构所有源文件，补充 XML 文档和行内注释。
 - `FindGroundPoint` / `FindGroundPointY` 改为“向上优先，修正后的向下回退，最后才用原版”。
@@ -833,7 +879,8 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 
 ### 16.4 工程 / 测试
 
-- 没有自动化测试；`dotnet build` 只能验证编译，不能验证游戏内行为。
+- 仓库尚无独立测试工程。1.0.0.9 的临时回归检查验证了补丁方法和原版 FSM
+  分支数据；`dotnet build` 及这些检查仍不能替代游戏内物理、动画和输入测试。
 - CI 的 Windows Release 构建只做了本地编译验证，GitHub Actions 实际运行
   还需要在 tag 上确认。
 - 测试清单中的交互、门、Cdash、法术、水面项目仍需逐项勾选。

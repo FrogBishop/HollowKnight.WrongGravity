@@ -4,7 +4,7 @@ A Hollow Knight 1.5.78.11833 mod that turns the Knight's gravity upside down whi
 keeping the screen readable: the Knight falls upward in world space, the camera
 projection is mirrored, and the level appears upside down on screen.
 
-Version 1.0.0.8.
+Version 1.0.0.9.
 
 This repository is a source mod, not a standalone game. Build it against the game's
 assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
@@ -33,6 +33,12 @@ assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
   search origin is raised above the buried floor first, so it reaches the real ceiling
   instead of hitting the floor at distance zero; if no ceiling exists it is left in
   place. Unusual triggers can be overridden in `Data/WrongGravityData.json`.
+- Mirrors the bench's seating-height adjustment, including the adjustment used when
+  loading a save on a bench. Sitting moves the Knight away from the ceiling instead
+  of into it; repeated rests keep the same direction.
+- Removes forced horizontal alignment from the standard NPC, shop, inspect and
+  station-bell interaction FSMs. Once activated, the interaction continues at the
+  Knight's current X position, with the normal facing and dialogue/menu logic.
 
 ## Requirements
 
@@ -48,7 +54,7 @@ from that version.
 ## Build
 
 ```powershell
-cd D:\HKProjects\WrongGravity\HollowKnight.WrongGravity
+cd D:\HKProjects\HollowKnight.WrongGravity
 dotnet build WrongGravity.csproj -c Release --nologo
 ```
 
@@ -81,6 +87,9 @@ Settings are exposed through the Modding API menu and saved as
 
 `Invert Gravity` is intentionally startup-only: the mod cannot safely uninstall hooks
 mid-scene. Change it and restart the game.
+
+Bench seating and interaction alignment fixes are part of gravity inversion itself.
+`Fix Interactions` controls trigger relocation; it does not disable these two fixes.
 
 ## Data overrides
 
@@ -189,6 +198,9 @@ gates. The destination fields come from `SceneLoadInfo` and are reliable.
 - Interaction triggers are detected by component/FSM behavior, not by a physics
   layer. Some custom NPCs, shops or door setups may still need a JSON interaction
   profile.
+- The horizontal alignment fix recognises the vanilla `Check Proximity` states and
+  their `Move Hero Left` / `Move Hero Right` branches. Custom interaction FSMs with
+  different state layouts may need an additional adapter.
 - Water/acid surfaces are not mirrored yet.
 - Enemy vertical knockback is mirrored by swapping Recoil up/down. Hit-effect
   rotations and some Quake/spell effects may still use unmirrored directions.
