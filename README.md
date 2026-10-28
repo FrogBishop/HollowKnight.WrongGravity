@@ -45,8 +45,11 @@ assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
 - Hollow Knight 1.5.78.11833 (Steam/GOG Windows build).
 - .NET Framework 4.7.2 targeting pack for building.
 - The Modding API / Modding API loader used by the Hollow Knight modding community.
-- `References/Assembly-CSharp.dll`, `MMHOOK_Assembly-CSharp.dll`, `UnityEngine*.dll`,
-  `Vasi.dll` and `PlayMaker.dll` in the `References/` folder.
+- PowerShell 7 (`pwsh`) and internet access to restore the latest Modding API and Vasi
+  releases. The restore script places `Assembly-CSharp.dll`,
+  `MMHOOK_Assembly-CSharp.dll` and `Vasi.dll` in `References/`; these files and their
+  symbols/documentation are excluded from Git.
+- `PlayMaker.dll` and the required `UnityEngine*.dll` files are kept in `References/`.
 
 Only 1.5.78 is supported. The hooks use private field names and PlayMaker state names
 from that version.
@@ -55,8 +58,17 @@ from that version.
 
 ```powershell
 cd D:\HKProjects\HollowKnight.WrongGravity
+pwsh -File .github/scripts/restore-references.ps1
 dotnet build WrongGravity.csproj -c Release --nologo
 ```
+
+The restore script queries the latest published release of
+[Modding API](https://github.com/hk-modding/api/releases/latest) and
+[Vasi](https://github.com/fifty-six/HollowKnight.Vasi/releases/latest) on every run.
+It selects the Windows Modding API archive and `Vasi.zip`, and logs the selected
+release tags. Set `GH_TOKEN` to use authenticated GitHub API requests when needed.
+GitHub Actions runs the same script before restoring/building the project and supplies
+its built-in token automatically.
 
 The Release target creates `WrongGravity.zip` in the project directory containing:
 

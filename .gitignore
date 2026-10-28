@@ -4,6 +4,16 @@ obj/
 Output/
 WrongGravity.zip
 
+# Restored from upstream releases, including game/API symbols and documentation.
+Assembly-CSharp*
+MMHOOK_Assembly-CSharp*
+Vasi.dll
+Vasi.pdb
+Vasi.xml
+Vasi.dll.mdb
+moddingapi.*.zip
+Vasi.zip
+
 # IDE / editor
 .vs/
 .idea/

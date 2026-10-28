@@ -84,9 +84,10 @@ HollowKnight.WrongGravity/
   Data/WrongGravityData.json      嵌入式门/交互覆盖
   README.md                       用户向说明
   DEVELOPMENT.md                  本文件
-  References/                     编译引用（游戏 DLL、MMHOOK、Vasi、PlayMaker、UnityEngine）
+  References/                     PlayMaker/UnityEngine + 构建前下载的 API/MMHOOK/Vasi
   WrongGravity.csproj             net472 工程 + Release 打包
   .github/workflows/dotnet.yml    tag 触发的 Release CI
+  .github/scripts/restore-references.ps1  从上游最新 Release 恢复编译依赖
 ```
 
 ---
@@ -378,6 +379,7 @@ HollowKnight.WrongGravity/
 
 - `net472`、`Version 1.0.0.9`。
 - 引用游戏 DLL、MMHOOK、UnityEngine、Vasi、PlayMaker。
+- Vasi 使用简单程序集名称引用，版本由下载到的最新 Release 决定。
 - 把 JSON 嵌入为 `WrongGravity.Data.WrongGravityData.json`。
 - Release 目标：
   - 复制 DLL/PDB 到 `Output/`；
@@ -392,6 +394,15 @@ HollowKnight.WrongGravity/
 - tag push 触发。
 - `windows-latest` + .NET 8 SDK（net472 在 Linux 上需要额外 reference
   assemblies，Windows 更稳）。
+- 构建前执行 `.github/scripts/restore-references.ps1`，每次查询
+  `hk-modding/api` 和 `fifty-six/HollowKnight.Vasi` 的最新已发布 Release。
+- 下载 `moddingapi.*.windows.zip` 和 `Vasi.zip`，在临时目录解压并校验
+  所需文件唯一存在，再将 `Assembly-CSharp.dll`、`MMHOOK_Assembly-CSharp.dll`
+  和 `Vasi.dll` 放入 `References/`。不会使用缓存中的旧依赖或固定版本号。
+- 通过 `GH_TOKEN` 使用 Actions 的内置 token 查询 GitHub API；日志记录实际
+  采用的 Release tag。缺失或重复的资产/DLL 会让恢复步骤失败。
+- 以上自动恢复的依赖及其符号/文档不纳入 Git；PlayMaker 与 UnityEngine
+  引用继续保留在仓库。本地构建也可运行同一个脚本。
 - `dotnet restore`、`dotnet build -c Release`。
 - 用 `gh release create` 上传 `WrongGravity.zip`（不再使用已废弃的
   create-release/upload-release-asset v1）。
@@ -684,6 +695,7 @@ Unity 中 disabled Collider2D 的 `bounds` 是零。原版 `Bounds Cage` 的
 
 ```powershell
 cd D:\HKProjects\HollowKnight.WrongGravity
+pwsh -File .github/scripts/restore-references.ps1
 dotnet build WrongGravity.csproj -c Release --nologo
 ```
 

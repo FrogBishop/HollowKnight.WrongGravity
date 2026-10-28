@@ -26,7 +26,7 @@
         <Reference Include="UnityEngine.Physics2DModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
             <HintPath>References\UnityEngine.Physics2DModule.dll</HintPath>
         </Reference>
-        <Reference Include="Vasi, Version=2.0.0.0, Culture=neutral, PublicKeyToken=null">
+        <Reference Include="Vasi">
             <HintPath>References\Vasi.dll</HintPath>
         </Reference>
         <Reference Include="PlayMaker">
