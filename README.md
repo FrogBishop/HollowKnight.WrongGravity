@@ -4,7 +4,7 @@ A Hollow Knight 1.5.78.11833 mod that turns the Knight's gravity upside down whi
 keeping the screen readable: the Knight falls upward in world space, the camera
 projection is mirrored, and the level appears upside down on screen.
 
-Version 1.0.0.9.
+Version 1.0.0.11.
 
 This repository is a source mod, not a standalone game. Build it against the game's
 assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
@@ -18,6 +18,9 @@ assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
 - Flips the Knight's `localScale.y` so the sprite/collider line up with the mirrored
   camera.
 - Mirrors the tk2d camera projection with `Matrix4x4.Scale(1, -1, 1)`.
+- Mirrors the camera's vertical look distance so holding up looks toward screen-up
+  and holding down looks toward screen-down, with the normal delay, smooth return
+  and room-boundary limits.
 - Reimplements the HeroController ray/ground checks that hard-code `Vector2.down`.
 - Uses the vanilla downward ground search (with the mod's collider-offset correction)
   while `EnterScene` places the Knight at a door, so a low ceiling above the doorway
@@ -25,6 +28,9 @@ assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
   respawn) stay mirrored.
 - Mirrors the PlayMaker collision, velocity and gravity actions used by hero FSMs.
 - Swaps up/down enemy knockback so a nail hit still knocks the enemy away on screen.
+- Corrects White Palace Wingmould sprites so their flying, wounded and recovery
+  animations keep a consistent upright appearance under the mirrored camera.
+  Both roaming and stationary Wingmoulds are covered.
 - Patches the Crystal Dash (Superdash) FSM so holding the button no longer auto-dashes.
 - Enables the top `Bounds Cage` kill collider so falling upward out of a room respawns
   the Knight like falling downward does in vanilla.

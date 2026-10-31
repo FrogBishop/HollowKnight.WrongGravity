@@ -53,6 +53,7 @@ namespace WrongGravity
 
             // Camera
             On.tk2dCamera.UpdateCameraMatrix += UpdateCameraMatrix;
+            On.CameraController.UpdateTargetDestinationDelta += UpdateCameraTargetDestinationDelta;
             On.GameCameras.StartScene += StartScene;
 
             // Hero lifecycle and movement
@@ -113,6 +114,9 @@ namespace WrongGravity
             // Enemy knockback: Recoil centralises HealthManager/BeginRecoil/dream-nail hits.
             On.Recoil.RecoilByDirection += RecoilByDirectionHook;
 
+            // Wingmoulds use a fixed wound animation whose sprite needs its own mirror.
+            On.HutongGames.PlayMaker.Actions.Tk2dPlayAnimation.DoPlayAnimation += PalaceFlyPlayAnimationHook;
+
             Log("Hooks installed; gravity inversion active.");
         }
 
@@ -141,6 +145,33 @@ namespace WrongGravity
             // projection this negates the vertical screen axis; tk2d uses an orthographic
             // matrix, so this is the intended mirror.
             camera.projectionMatrix *= Matrix4x4.Scale(new Vector3(1f, -1f, 1f));
+        }
+
+        /// <summary>
+        /// Mirrors the vertical look distance before the camera consumes it. Vanilla
+        /// LateUpdate sets lookOffset to heroY - targetY +/- 6, then calculates the
+        /// destination, applies lock/scene bounds and smooths the movement. Only the
+        /// +/- 6 look distance changes sign; the hero-to-target correction stays in
+        /// world space. Recomputing it also avoids double flips when scene positioning
+        /// calls UpdateTargetDestinationDelta again.
+        /// </summary>
+        private void UpdateCameraTargetDestinationDelta(
+            On.CameraController.orig_UpdateTargetDestinationDelta orig,
+            CameraController self)
+        {
+            if (Config.Enabled && self != null && self.camTarget != null)
+            {
+                HeroController hero = Mirror.GetField<CameraController, HeroController>(self, "hero_ctrl");
+                if (hero != null && hero.cState != null &&
+                    (hero.cState.lookingUp || hero.cState.lookingDown))
+                {
+                    // Screen-up is world-down under the mirrored projection.
+                    float lookDistance = hero.cState.lookingUp ? -6f : 6f;
+                    self.lookOffset = hero.transform.position.y - self.camTarget.transform.position.y + lookDistance;
+                }
+            }
+
+            orig(self);
         }
 
         /// <summary>

@@ -5,7 +5,7 @@
         <Product>Wrong Gravity</Product>
         <OutputPath>bin\$(Configuration)\</OutputPath>
         <LangVersion>latest</LangVersion>
-        <Version>1.0.0.9</Version>
+        <Version>1.0.0.11</Version>
     </PropertyGroup>
 
     <!-- Game and modding references. These are compile-time references only; they are

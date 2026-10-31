@@ -1,6 +1,6 @@
 # WrongGravity 开发记录
 
-版本：1.0.0.9
+版本：1.0.0.11
 
 目标游戏：Hollow Knight 1.5.78.11833  
 目标框架：.NET Framework 4.7.2  
@@ -78,6 +78,7 @@ HollowKnight.WrongGravity/
   WrongGravity.FsmMirror.cs       CheckCollisionSide / CheckCollisionSideEnter / RayCast2d
   WrongGravity.FsmVelocity.cs     SetVelocity2d / GetVelocity2d / SetGravity2dScale
   WrongGravity.EnemyRecoil.cs     敌人垂直击退方向交换（RecoilByDirection）
+  WrongGravity.PalaceFly.cs       白宫翅模飞行/受伤/恢复贴图朝向修正
   WrongGravity.Diagnostics.cs     门、顶部 kill plane、Crystal Dash FSM 补丁
   WrongGravity.Settings.cs        配置 + IMenuMod
   WrongGravity.Data.cs            DoorProfile / InteractionProfile / MirrorData / MiniJson
@@ -104,6 +105,9 @@ HollowKnight.WrongGravity/
 - 相机：
   - `UpdateCameraMatrix`：`tk2dCamera` 重建投影后，对主相机执行
     `projectionMatrix *= Scale(1,-1,1)`。这是主相机的唯一翻转点。
+  - `UpdateCameraTargetDestinationDelta`：在原版计算镜头目标前，将长按上/下的
+    观察距离改为世界坐标 -6/+6；保留 Hero 与 CameraTarget 的位置差，之后
+    继续执行原版限位和平滑移动。角色的长按计时和抬头/低头状态无需修改。
   - `StartScene`：只处理 `tk2dCam` 下**除主相机以外**的子相机，并跳过
     嵌套的 `tk2dCamera`（它们自己会在 `UpdateCameraMatrix` 里翻转）；用
     `CameraProjectionMarker` 标记已翻转，避免和 `UpdateCameraMatrix` 双翻。
@@ -272,6 +276,22 @@ HollowKnight.WrongGravity/
 - 注意：这只修正**击退方向**；受击特效的旋转、`directionOfLastAttack`、
   部分敌人 FSM 的动画仍可能使用未镜像的世界方向。
 
+### 3.6.2 `WrongGravity.PalaceFly.cs`
+
+- 白宫的 `White Palace Fly`（翅模）用 `Control` FSM 播放 `Fly` 和 `Wound`。
+  它没有根据攻击方向旋转贴图，而是使用固定的受伤动画，随后返回起点恢复飞行。
+- Hook `Tk2dPlayAnimation.DoPlayAnimation`，只匹配 `Control` 且
+  `PlayerData Name == PalaceFly` 的 FSM，并确认动画目标是该 FSM 自身的对象。
+  不依赖带编号或 `(Clone)` 后缀的场景对象名称。
+- 对 `tk2dBaseSprite.FlipY` 做一次基于原始朝向的镜像补偿。用弱引用表保存
+  每个 sprite 的原始标志，后续播放动画时继续使用同一目标朝向，避免重复受击、
+  恢复及对象复用造成来回翻转。
+- 补偿覆盖整个飞行/受伤/恢复周期，普通移动型和苦痛之路的静止型使用同一逻辑。
+  不改对象 transform、击退方向、`Wound` 阶段速度或回到起点的补间运动。
+- 已核对原版动画全部 3 个 Fly 帧、19 个 Wound 帧均为
+  `ColliderType.Unset` / `Physics3D`；sprite 翻转不会改动其单独配置的 BoxCollider2D。
+- 由重力总开关 `Config.Enabled` 控制，独立于 `MirrorEnemyRecoil`。
+
 ### 3.7 `WrongGravity.Diagnostics.cs`
 
 分成三块。
@@ -377,7 +397,7 @@ HollowKnight.WrongGravity/
 
 ### 3.11 `WrongGravity.csproj`
 
-- `net472`、`Version 1.0.0.9`。
+- `net472`、`Version 1.0.0.11`。
 - 引用游戏 DLL、MMHOOK、UnityEngine、Vasi、PlayMaker。
 - Vasi 使用简单程序集名称引用，版本由下载到的最新 Release 决定。
 - 把 JSON 嵌入为 `WrongGravity.Data.WrongGravityData.json`。
@@ -456,6 +476,14 @@ camera.projectionMatrix *= Matrix4x4.Scale(new Vector3(1f, -1f, 1f));
 
 tk2d 使用正交投影，右乘 Y 缩放会翻转屏幕 Y 轴。主相机只由
 `UpdateCameraMatrix` 翻转；`StartScene` 只翻转其他子相机，避免双重翻转。
+
+原版 `CameraController.LateUpdate` 在长按上/下时，将 `lookOffset` 设置为
+`heroY - targetY + 6` / `heroY - targetY - 6`。镜像后屏幕上方对应世界下方，
+因此在 `UpdateTargetDestinationDelta` 消费该偏移之前，分别重算为
+`heroY - targetY - 6` / `heroY - targetY + 6`。不能直接对整个 `lookOffset`
+取反，否则 Hero 与 CameraTarget 高度不一致时，会错误翻转追踪位置差。
+松键后原版将偏移重置为 0，并继续平滑回正；相机锁定区域和场景边界仍在
+目标位置计算后执行。场景定位再次调用目标计算时，重算公式也不会重复翻转。
 
 ---
 
@@ -707,7 +735,7 @@ Release 目标会：
 4. 删除 `Output/`；
 5. 打印 SHA256。
 
-当前版本：`1.0.0.9`。
+当前版本：`1.0.0.11`。
 
 Release 构建结果：
 
@@ -715,7 +743,7 @@ Release 构建结果：
 0 warnings
 0 errors
 WrongGravity.zip
-SHA256 D12AA8F6679E26AA4E323564B74F448764559021132E34EA513E3B97C67EE075
+SHA256 847D16D65FB3F96643F98C56E79A77E952C77DD2F2E7D3DC842436088DE0B2C3
 ```
 
 当前 zip 内容：
@@ -735,9 +763,14 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 ### 13.1 基础
 
 - [ ] 普通跳跃 / 二段跳 / 冲刺 / 超级冲刺
+- [ ] 长按上时镜头向屏幕上方观察，长按下时向屏幕下方观察
+- [ ] 松开方向键后镜头平滑回正，长按触发延迟与角色动作正常
+- [ ] 在场景上下边缘、相机锁定区域及切换房间后，上下观察与镜头限位正常
 - [ ] 受击 Recoil / 下砸 Recoil
 - [ ] 骨钉向上/向下击中敌人：敌人应向屏幕外侧击退
 - [ ] 敌人受击特效方向（可能仍不镜像）
+- [ ] 白宫普通翅模与苦痛之路静止翅模受击后，贴图朝向正确
+- [ ] 翅模反复受击、恢复飞行后朝向保持一致，碰撞与返回起点行为正常
 - [ ] 梦钉 / 梦门
 - [ ] 法术（尤其下砸）
 - [ ] 长椅 / NPC / 石碑 / 商店交互
@@ -800,7 +833,23 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 
 ## 15. 版本改动
 
-### 15.1 1.0.0.9
+### 15.1 1.0.0.11
+
+- 新增白宫翅模 sprite 镜像补偿，修复受击后固定 Wound 动画的上下朝向。
+- 对飞行、受伤、恢复使用一致朝向，并按每个 sprite 的原始标志赋值，避免重复翻转。
+- 从 `White_Palace_06` 和 `White_Palace_18` 的资源核对了 17 个普通/静止实例，
+  确认识别标志和动画路径一致；核对了所有相关动画帧的碰撞定义。
+- 游戏内实际动画、连续受击与碰撞表现仍需按第 13 节回归。
+
+### 15.2 1.0.0.10
+
+- 修复长按上/下时镜头观察方向与镜像画面相反的问题。
+- 在原版计算相机目标前，仅反转观察距离，保留角色与追踪目标的位置差。
+- 原版输入延迟、角色抬头/低头状态、镜头平滑移动和边界限制继续生效。
+- 已核对 1.5.78 的 `CameraController.LateUpdate`、目标计算与场景定位调用顺序；
+  游戏内输入、动画及边界表现仍需按第 13 节回归。
+
+### 15.3 1.0.0.9
 
 - 修正长椅 `Adjust Vector.y` 的方向，覆盖手动入座和读档坐姿，并避免重复翻转。
 - 移除原版交互 `Check Proximity` 中强制左右走位的分支，交互直接在当前 X 继续。
@@ -812,7 +861,7 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 - 上述检查在游戏进程外执行，不包含实际物理、动画和输入回归；第 13 节的
   游戏内测试仍待执行。
 
-### 15.2 从 1.0.0.2 到 1.0.0.8
+### 15.4 从 1.0.0.2 到 1.0.0.8
 
 - 重构所有源文件，补充 XML 文档和行内注释。
 - `FindGroundPoint` / `FindGroundPointY` 改为“向上优先，修正后的向下回退，最后才用原版”。
