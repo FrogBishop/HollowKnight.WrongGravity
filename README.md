@@ -4,7 +4,7 @@ A Hollow Knight 1.5.78.11833 mod that turns the Knight's gravity upside down whi
 keeping the screen readable: the Knight falls upward in world space, the camera
 projection is mirrored, and the level appears upside down on screen.
 
-Version 1.0.0.11.
+Version 1.0.0.12.
 
 This repository is a source mod, not a standalone game. Build it against the game's
 assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
@@ -26,6 +26,9 @@ assembly and install the resulting `WrongGravity.dll` with a Modding API loader.
   while `EnterScene` places the Knight at a door, so a low ceiling above the doorway
   cannot wedge his head at the gate. Normal in-room ground searches (bench/hazard
   respawn) stay mirrored.
+- Checks the Knight's body and hurtboxes before moving a hazard respawn to a ceiling.
+  If the proposed location overlaps an environmental hazard, the original respawn
+  coordinates are kept, preventing the relocation from causing repeated hazard damage.
 - Mirrors the PlayMaker collision, velocity and gravity actions used by hero FSMs.
 - Swaps up/down enemy knockback so a nail hit still knocks the enemy away on screen.
 - Corrects White Palace Wingmould sprites so their flying, wounded and recovery
@@ -180,6 +183,13 @@ The mod tries the mirrored search first:
 4. Only if there is neither a ceiling nor a floor does it call the vanilla method, which
    then logs its usual "could not find ground" error.
 
+**Hazard-respawn safety.** During `HazardRespawn`, a ceiling candidate is checked using
+the Knight's full body and hurtbox footprints, including trigger-based damage areas.
+Spikes, acid, lava/pit damage, legacy `damages_hero` FSMs and solid `KillOnContact`
+regions reject the candidate. The mod then returns the original input coordinates;
+it does not move the respawn to a different surface. Safe ceilings still use the
+normal mirrored placement. Ordinary damage from enemies does not reject a location.
+
 The interaction fixer searches **upward only**. That is intentional: interaction
 points belong on the inverted-gravity floor (the ceiling), and a downward fallback would
 move a trigger that is already on a ceiling, or a trigger in a room without a ceiling,
@@ -195,7 +205,7 @@ All messages go to the Modding API log:
 - `[FSM]`: CheckCollisionSide / RayCast2d / velocity mirroring.
 - `[Cdash]`: Superdash state and hold/release logic.
 - `[Ground]`: upward/fallback ground searches and the scene-entry downward search
-  (Verbose Log).
+  (Verbose Log), including unsafe hazard-respawn candidates kept at their original position.
 - `[Bump]`: bump height details (Verbose Log).
 - `[Interaction]`: interaction/door trigger adjustments.
 

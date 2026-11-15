@@ -1,6 +1,6 @@
 # WrongGravity 开发记录
 
-版本：1.0.0.11
+版本：1.0.0.12
 
 目标游戏：Hollow Knight 1.5.78.11833  
 目标框架：.NET Framework 4.7.2  
@@ -72,6 +72,7 @@ Hero 入口都有 `try/finally`；如果以后新增入口，必须遵守同样�
 HollowKnight.WrongGravity/
   WrongGravity.cs                 入口、Hook 注册、相机、Hero wrapper、碰撞/地面重写
   WrongGravity.Ground.cs          GroundProbe + FindGroundPoint/Y（入口走向下搜索，其余向上优先/向下回退）
+  WrongGravity.HazardRespawn.cs   危险重生候选点的碰撞检测与原始坐标回退
   WrongGravity.Interactions.cs     交互/门型 transition 触发器修正 + JSON profile
   WrongGravity.InteractionFsm.cs   长椅入座高度镜像 + 交互后取消强制 X 走位
   WrongGravity.Mirror.cs          MirrorContext / MirrorEntity
@@ -142,6 +143,7 @@ HollowKnight.WrongGravity/
 - 逻辑：
   1. 用 `GroundProbe.TryFindUp` 在 Terrain 层向上找“天花板”；
   2. 找到则返回 Knight 的 transform 位置（collider 顶部贴住天花板）；
+     危险重生时先做第 3.2.1 节的安全检测，不安全则直接保留传入的原始坐标；
   3. 找不到则用 `GroundProbe.TryFindDown` 做修正后的向下搜索；
      上下都没有时才调用原版 `orig`（原版会记录自己的找不到地面错误）。
 - 这个策略是刻意的：某些房间上方没有天花板，如果只做向上搜索会一直
@@ -162,6 +164,26 @@ HollowKnight.WrongGravity/
   - 向上站立：`hit.y - 0.01 - extents.y - worldOffsetY`
   - 向下站立：`hit.y + 0.01 + extents.y - worldOffsetY`
   这些公式同时兼容 `localScale.y = -1` 和正常比例。
+
+### 3.2.1 `WrongGravity.HazardRespawn.cs`
+
+- 原版 `HazardRespawn` 在调用 `FindGroundPoint` 前设置
+  `cState.hazardRespawning = true`，据此只对危险重生的向上候选点检查安全性。
+  `FindGroundPoint` 与 `FindGroundPointY` 使用同一个判定入口。
+- 将角色实体碰撞框和各个 `HeroBox` 的碰撞框投影到候选位置，用
+  `Physics2D.OverlapBox` 查询；不会真的移动角色来试探。
+- BoxCollider2D 使用局部 size/offset、TransformPoint 和实际缩放计算，
+  支持负缩放及临时禁用的碰撞框；额外保留 0.02 单位接触余量。
+- 使用 `ContactFilter2D.useTriggers = true`，以及重生后的 PLAYER/HERO_BOX
+  碰撞层。死亡时角色实体暂时处于 Ignore Raycast 层，不能拿该临时层筛选。
+  查询使用动态列表，不会因固定容量截断而漏掉伤害区。
+- 按 HeroBox 的顺序优先读取旧版 `damages_hero` FSM，否则读取 `DamageHero`。
+  检查正伤害和 2/3/4/5 类型（地刺/酸液/熔岩/深坑）；这些编号与零起始的
+  `GlobalEnums.HazardType` 不同。DamageHero 是数据组件，不能按 enabled 忽略。
+- 同时识别实体碰撞触发的 `KillOnContact`，包括附属 Rigidbody2D 上的组件。
+  禁用的环境碰撞体、不激活的对象、普通伤害和角色自身层级不阻止镜像放置。
+- 候选点不安全时直接返回原始 startPoint（Y 版本返回原始 y），保留角色 Z；
+  不继续寻找另一块地面。`Verbose Log` 会记录被拒绝的候选点。
 
 ### 3.3 `WrongGravity.Interactions.cs`
 
@@ -397,7 +419,7 @@ HollowKnight.WrongGravity/
 
 ### 3.11 `WrongGravity.csproj`
 
-- `net472`、`Version 1.0.0.11`。
+- `net472`、`Version 1.0.0.12`。
 - 引用游戏 DLL、MMHOOK、UnityEngine、Vasi、PlayMaker。
 - Vasi 使用简单程序集名称引用，版本由下载到的最新 Release 决定。
 - 把 JSON 嵌入为 `WrongGravity.Data.WrongGravityData.json`。
@@ -710,7 +732,7 @@ Unity 中 disabled Collider2D 的 `bounds` 是零。原版 `Bounds Cage` 的
 - `[KillPlane]`：Bounds Cage 选择。
 - `[FSM]`：CheckCollisionSide、RayCast2d、velocity。
 - `[Cdash]`：Superdash 状态和 hold/release。
-- `[Ground]`：ground search（Verbose Log）。
+- `[Ground]`：ground search 和危险重生的候选点拒绝/原位回退（Verbose Log）。
 - `[Bump]`：bump 高度（Verbose Log）。
 - `[Interaction]`：交互触发器调整、长椅高度镜像、强制走位分支移除。
 
@@ -735,7 +757,7 @@ Release 目标会：
 4. 删除 `Output/`；
 5. 打印 SHA256。
 
-当前版本：`1.0.0.11`。
+当前版本：`1.0.0.12`。
 
 Release 构建结果：
 
@@ -743,7 +765,7 @@ Release 构建结果：
 0 warnings
 0 errors
 WrongGravity.zip
-SHA256 847D16D65FB3F96643F98C56E79A77E952C77DD2F2E7D3DC842436088DE0B2C3
+SHA256 C2A76D94F90EDF2477E5D298949FA93448B927CB67F41D7BDA0529C69CD6AFFD
 ```
 
 当前 zip 内容：
@@ -778,6 +800,9 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 - [ ] 各种上/下/左/右门
 - [ ] 场景边缘向上掉出（顶部 kill plane）
 - [ ] 左右门/门型门进入后的落地点（EnterScene 内按原版方向向下搜索）
+- [ ] 危险重生候选天花板有地刺/酸液/死亡边界时，保留原始坐标并可恢复控制
+- [ ] 候选点中心无危险、但角色身体或受伤框边缘接触危险时，同样回退
+- [ ] 安全天花板仍正常使用；普通长椅重生、交互迁移和过门行为不受此检查影响
 
 ### 13.2 Cdash
 
@@ -833,7 +858,17 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 
 ## 15. 版本改动
 
-### 15.1 1.0.0.11
+### 15.1 1.0.0.12
+
+- 增加危险重生候选点的环境伤害重叠检测，危险天花板直接回退到原始重生坐标。
+- 覆盖角色实体和受伤框、触发器危险区、旧版伤害 FSM 及实体死亡边界。
+- 临时检查程序直接编译本次实际 Ground/HazardRespawn 源码，通过 43 项断言，
+  覆盖安全/危险落点、两个寻地入口、负缩放、禁用受伤框、伤害类型和旧 FSM
+  优先级、查询容量，以及普通寻地/场景入口/关闭模组时的原有行为。
+- 检查使用受控几何和物理接口替身，未运行 Unity 物理引擎；实际游戏内重生、
+  移动危险物和恢复控制仍需按第 13 节回归。
+
+### 15.2 1.0.0.11
 
 - 新增白宫翅模 sprite 镜像补偿，修复受击后固定 Wound 动画的上下朝向。
 - 对飞行、受伤、恢复使用一致朝向，并按每个 sprite 的原始标志赋值，避免重复翻转。
@@ -841,7 +876,7 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
   确认识别标志和动画路径一致；核对了所有相关动画帧的碰撞定义。
 - 游戏内实际动画、连续受击与碰撞表现仍需按第 13 节回归。
 
-### 15.2 1.0.0.10
+### 15.3 1.0.0.10
 
 - 修复长按上/下时镜头观察方向与镜像画面相反的问题。
 - 在原版计算相机目标前，仅反转观察距离，保留角色与追踪目标的位置差。
@@ -849,7 +884,7 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 - 已核对 1.5.78 的 `CameraController.LateUpdate`、目标计算与场景定位调用顺序；
   游戏内输入、动画及边界表现仍需按第 13 节回归。
 
-### 15.3 1.0.0.9
+### 15.4 1.0.0.9
 
 - 修正长椅 `Adjust Vector.y` 的方向，覆盖手动入座和读档坐姿，并避免重复翻转。
 - 移除原版交互 `Check Proximity` 中强制左右走位的分支，交互直接在当前 X 继续。
@@ -861,7 +896,7 @@ JSON 不单独出现在 zip 中，它已作为 EmbeddedResource 嵌入 DLL。
 - 上述检查在游戏进程外执行，不包含实际物理、动画和输入回归；第 13 节的
   游戏内测试仍待执行。
 
-### 15.4 从 1.0.0.2 到 1.0.0.8
+### 15.5 从 1.0.0.2 到 1.0.0.8
 
 - 重构所有源文件，补充 XML 文档和行内注释。
 - `FindGroundPoint` / `FindGroundPointY` 改为“向上优先，修正后的向下回退，最后才用原版”。

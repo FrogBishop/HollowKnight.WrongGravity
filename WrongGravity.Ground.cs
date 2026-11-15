@@ -25,6 +25,8 @@ namespace WrongGravity
     /// the same collider-offset correction as the rest of the mod) instead of the
     /// mirrored upward search. Some doorways sit directly under a low ceiling; the
     /// mirrored search would put the Knight's head against it and block the transition.
+    /// During hazard respawn, an upward result is also checked against environmental
+    /// damage. An unsafe ceiling leaves the original respawn coordinates untouched.
     /// </summary>
     public partial class WrongGravity
     {
@@ -32,6 +34,7 @@ namespace WrongGravity
         /// Hook for <see cref="HeroController.FindGroundPoint(Vector2, bool)"/>.
         /// During scene entry it uses the vanilla downward search; otherwise it tries
         /// upward first, then a corrected downward search, then the original method.
+        /// Hazard respawns keep startPoint when the ceiling would cause damage.
         /// </summary>
         private Vector3 FindGroundPoint(
             On.HeroController.orig_FindGroundPoint orig,
@@ -67,6 +70,9 @@ namespace WrongGravity
 
             if (GroundProbe.TryFindUp(self, startPoint, useExtended, out Vector3 point))
             {
+                if (ShouldKeepOriginalHazardRespawn(self, startPoint, point))
+                    return new Vector3(startPoint.x, startPoint.y, self.transform.position.z);
+
                 if (Config.VerboseLog)
                     Log("[Ground] FindGroundPoint up start=" + startPoint + " result=" + point);
                 return point;
@@ -89,8 +95,8 @@ namespace WrongGravity
 
         /// <summary>
         /// Hook for <see cref="HeroController.FindGroundPointY(float, float, bool)"/>.
-        /// Same scene-entry exception and upward-first, corrected-downward, then-vanilla
-        /// policy as <see cref="FindGroundPoint"/>.
+        /// Same scene-entry exception, hazard-respawn safety check and upward-first,
+        /// corrected-downward, then-vanilla policy as <see cref="FindGroundPoint"/>.
         /// </summary>
         private float FindGroundPointY(
             On.HeroController.orig_FindGroundPointY orig,
@@ -121,6 +127,9 @@ namespace WrongGravity
 
             if (GroundProbe.TryFindUp(self, new Vector2(x, y), useExtended, out Vector3 point))
             {
+                if (ShouldKeepOriginalHazardRespawn(self, new Vector2(x, y), point))
+                    return y;
+
                 if (Config.VerboseLog)
                     Log("[Ground] FindGroundPointY up x=" + x + " y=" + y + " resultY=" + point.y);
                 return point.y;
